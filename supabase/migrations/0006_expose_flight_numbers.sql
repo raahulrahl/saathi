@@ -12,6 +12,9 @@
 -- Elderly PII (name, photo, medical notes) remains redacted. Contact
 -- details still require an accepted match request.
 
+-- Postgres allows CREATE OR REPLACE VIEW to APPEND columns, not to insert
+-- them in the middle — swapping positions looks like a rename to the
+-- planner and is rejected. So `flight_numbers` goes at the end.
 create or replace view public.public_trips
 with (security_invoker = true) as
 select
@@ -21,7 +24,6 @@ select
   t.route,
   t.travel_date,
   t.airline,
-  t.flight_numbers,
   t.languages,
   t.gender_preference,
   t.help_categories,
@@ -29,7 +31,8 @@ select
   t.notes,
   t.status,
   t.elderly_age_band,
-  t.created_at
+  t.created_at,
+  t.flight_numbers
 from public.trips t;
 
 grant select on public.public_trips to anon, authenticated;
