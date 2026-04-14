@@ -1,0 +1,58 @@
+# Supabase local dev config. Project-id is used for local CLI only.
+project_id = "sathi"
+
+[api]
+enabled = true
+port = 54321
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+image_transformation = { enabled = true }
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+jwt_expiry = 3600
+enable_signup = true
+enable_anonymous_sign_ins = false
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+double_confirm_changes = true
+secure_password_change = false
+max_frequency = "1s"
+
+[auth.sms]
+enable_signup = false
+enable_confirmations = false
+
+# OAuth providers — enabled per spec §8
+[auth.external.google]
+enabled = true
+client_id = "env(AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(AUTH_GOOGLE_SECRET)"
+
+[auth.external.linkedin_oidc]
+enabled = true
+client_id = "env(AUTH_LINKEDIN_CLIENT_ID)"
+secret = "env(AUTH_LINKEDIN_SECRET)"
+
+[auth.external.twitter]
+enabled = true
+client_id = "env(AUTH_TWITTER_CLIENT_ID)"
+secret = "env(AUTH_TWITTER_SECRET)"
