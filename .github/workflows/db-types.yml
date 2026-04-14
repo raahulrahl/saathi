@@ -1,0 +1,17 @@
+name: DB Types Check
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'types/db.ts'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+      - run: supabase start
+      - run: supabase gen types typescript --local > /tmp/db.ts
+      - run: diff /tmp/db.ts types/db.ts || (echo "Run 'pnpm db:types' and commit the result" && exit 1)
