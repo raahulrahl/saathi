@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
+import { LanguageMultiSelect } from '@/components/language-multi-select';
 import { LANGUAGES } from '@/lib/languages';
 import type { Role } from '@/types/db';
 import { updateOwnProfileAction } from './actions';
@@ -30,11 +30,11 @@ export function ProfileBasics({ initial }: ProfileBasicsProps) {
   const [pending, start] = useTransition();
   const [saved, setSaved] = useState(false);
 
-  function toggleLanguage(l: string) {
+  function setLanguages(next: string[]) {
     setState((s) => {
-      const has = s.languages.includes(l);
-      const next = has ? s.languages.filter((x) => x !== l) : [...s.languages, l];
-      const primary = next.includes(s.primary_language) ? s.primary_language : (next[0] ?? l);
+      const primary = next.includes(s.primary_language)
+        ? s.primary_language
+        : (next[0] ?? s.primary_language);
       return { ...s, languages: next, primary_language: primary };
     });
   }
@@ -123,18 +123,14 @@ export function ProfileBasics({ initial }: ProfileBasicsProps) {
       </div>
 
       <div className="space-y-2">
-        <Label>Languages you speak</Label>
-        <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-3">
-          {LANGUAGES.map((l) => (
-            <label key={l} className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={state.languages.includes(l)}
-                onCheckedChange={() => toggleLanguage(l)}
-              />
-              {l}
-            </label>
-          ))}
-        </div>
+        <Label htmlFor="languages">Languages you speak</Label>
+        <LanguageMultiSelect
+          id="languages"
+          options={LANGUAGES}
+          selected={state.languages}
+          onChange={setLanguages}
+          placeholder="Pick your languages…"
+        />
       </div>
 
       {state.languages.length > 0 ? (

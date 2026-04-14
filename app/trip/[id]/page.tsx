@@ -91,6 +91,15 @@ export default async function TripPage({ params }: TripPageProps) {
                 </>
               ) : null}
             </p>
+            {trip.flight_numbers && trip.flight_numbers.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {trip.flight_numbers.map((fn: string) => (
+                  <Badge key={fn} variant="outline" className="font-mono">
+                    ✈ {fn}
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           {isRequest && trip.elderly_age_band ? (

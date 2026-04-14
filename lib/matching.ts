@@ -1,22 +1,31 @@
 /**
  * Trip ranking. See Product Spec §3.5.
  *
- * We do NOT filter aggressively — the search result page needs to show a
- * no-shared-language match if that's what's available, just visually
- * de-emphasized. The caller sorts results by `score` descending and decides
- * how to render each bucket (primary_language > shared > no overlap).
+ * Matching philosophy (updated 2026-04):
+ *   The thing Saathi is actually matching is "two people on the same
+ *   aircraft". A ±3-day date window on a shared route produced false
+ *   matches — students flying CCU→AMS on the 10th can't help a parent
+ *   on the 14th, even if both post those endpoints. So flight number
+ *   is now the primary match criterion.
  *
- * Weights were chosen so that a perfect language match three days off the
- * requested date beats an English-only match on the exact date:
+ *   Filter cascade:
+ *     1. If the searcher provides flight numbers, only trips with a
+ *        matching flight number on at least one leg pass the filter.
+ *     2. Otherwise the trip must fall inside `dateWindowDays` of the
+ *        requested date (default 1 to cover red-eyes and timezone fuzz,
+ *        not general browsing).
  *
- *   primary_language match → +100
- *   any shared language    → +40  (bigger gap on purpose; see §2 "Why language")
- *   no shared language     → 0
- *
- *   date delta:   -5 per day (so ±3 days costs at most 15)
- *   route exact:  +25; shared both ends, different layovers: +15; one-leg: +5
- *   verifications: +3 per verified channel (cap at 12)
- *   review score:  average_rating * review_count_capped (cap at 10) — modest bump
+ *   Scoring within the filter, highest to lowest:
+ *     flight-number exact match (same leg, same flight):   +200
+ *     language: primary match                              +100
+ *     language: any shared                                  +40
+ *     language: no overlap                                    0
+ *     route: exact two-leg match                            +25
+ *     route: same endpoints, different layovers             +15
+ *     route: one-leg overlap                                 +5
+ *     date delta:                                -5 per day
+ *     verifications (capped at 4):                  +3 per channel
+ *     reviews (count capped at 10 × avg/5):           0..10
  */
 
 export interface RankableTrip {
@@ -26,6 +35,7 @@ export interface RankableTrip {
   travel_date: string; // ISO date 'YYYY-MM-DD'
   languages: string[];
   primary_language?: string | null;
+  flight_numbers?: string[] | null;
   verified_channel_count?: number;
   review_count?: number;
   average_rating?: number | null;
@@ -35,7 +45,8 @@ export interface SearchCriteria {
   origin: string;
   destination: string;
   date: string; // ISO 'YYYY-MM-DD'
-  dateWindowDays: number; // spec v1 = 3
+  dateWindowDays: number; // default 1
+  flightNumbers?: string[]; // when provided, exact-match is required
   viewerLanguages?: string[];
   viewerPrimaryLanguage?: string | null;
 }
@@ -49,6 +60,8 @@ export interface Scored<T extends RankableTrip = RankableTrip> {
   matchedLanguages: string[];
   dayDelta: number;
   routeMatch: 'exact' | 'endpoints' | 'one-leg' | 'none';
+  flightMatch: boolean; // true when at least one flight number matches
+  matchedFlightNumbers: string[];
 }
 
 /** Difference in days, ignoring timezone. */
@@ -103,6 +116,21 @@ export function languageBand(
   return { band: 'none', matched: [] };
 }
 
+/** Normalise flight numbers for comparison: uppercase, strip whitespace. */
+function normaliseFlight(fn: string): string {
+  return fn.trim().toUpperCase().replace(/\s+/g, '');
+}
+
+/** Returns the set of flight numbers that appear on both sides. */
+export function matchingFlightNumbers(
+  tripFlights: readonly string[] | null | undefined,
+  searcherFlights: readonly string[] | null | undefined,
+): string[] {
+  if (!tripFlights || !searcherFlights) return [];
+  const searcherSet = new Set(searcherFlights.map(normaliseFlight));
+  return tripFlights.filter((fn) => searcherSet.has(normaliseFlight(fn)));
+}
+
 export function scoreTrip<T extends RankableTrip>(trip: T, criteria: SearchCriteria): Scored<T> {
   const { band, matched } = languageBand(
     trip.languages,
@@ -114,10 +142,13 @@ export function scoreTrip<T extends RankableTrip>(trip: T, criteria: SearchCrite
   const rm = routeMatch(trip.route, criteria.origin, criteria.destination);
   const delta = dayDiff(trip.travel_date, criteria.date);
 
+  const matchedFlights = matchingFlightNumbers(trip.flight_numbers, criteria.flightNumbers);
+  const flightMatch = matchedFlights.length > 0;
+
   let score = 0;
+  if (flightMatch) score += 200;
   if (band === 'primary') score += 100;
   else if (band === 'shared') score += 40;
-  // 'none' → 0
 
   score += rm === 'exact' ? 25 : rm === 'endpoints' ? 15 : rm === 'one-leg' ? 5 : 0;
   score -= delta * 5;
@@ -127,7 +158,7 @@ export function scoreTrip<T extends RankableTrip>(trip: T, criteria: SearchCrite
 
   const reviewCap = Math.min(trip.review_count ?? 0, 10);
   const avg = trip.average_rating ?? 0;
-  score += reviewCap * (avg / 5); // 0..10 range
+  score += reviewCap * (avg / 5);
 
   return {
     trip,
@@ -136,16 +167,32 @@ export function scoreTrip<T extends RankableTrip>(trip: T, criteria: SearchCrite
     matchedLanguages: matched,
     dayDelta: delta,
     routeMatch: rm,
+    flightMatch,
+    matchedFlightNumbers: matchedFlights,
   };
 }
 
-/** Filter to the date window, then score and sort descending. */
+/**
+ * Filter + rank trips.
+ *   - If `criteria.flightNumbers` is non-empty, only trips with at least one
+ *     matching flight number pass. Date window is ignored in this mode —
+ *     flight numbers already uniquely identify the departure.
+ *   - Otherwise, trips must fall within `criteria.dateWindowDays` of the
+ *     requested date.
+ */
 export function rankTrips<T extends RankableTrip>(
   trips: readonly T[],
   criteria: SearchCriteria,
 ): Scored<T>[] {
+  const usingFlightFilter = !!criteria.flightNumbers && criteria.flightNumbers.length > 0;
+
   return trips
-    .filter((t) => dayDiff(t.travel_date, criteria.date) <= criteria.dateWindowDays)
+    .filter((t) => {
+      if (usingFlightFilter) {
+        return matchingFlightNumbers(t.flight_numbers, criteria.flightNumbers).length > 0;
+      }
+      return dayDiff(t.travel_date, criteria.date) <= criteria.dateWindowDays;
+    })
     .map((t) => scoreTrip(t, criteria))
     .sort((a, b) => b.score - a.score);
 }

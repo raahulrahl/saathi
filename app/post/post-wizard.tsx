@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { LanguageMultiSelect } from '@/components/language-multi-select';
 import { HELP_CATEGORIES, LANGUAGES } from '@/lib/languages';
 import { isValidIata } from '@/lib/iata';
 import { createTripAction, type TripInput } from './actions';
@@ -56,13 +57,6 @@ export function PostWizard({ kind, profileLanguages, defaults }: PostWizardProps
       const next = s.route.filter((_, idx) => idx !== i);
       return { ...s, route: next };
     });
-  }
-
-  function toggleLanguage(l: string) {
-    setState((s) => ({
-      ...s,
-      languages: s.languages.includes(l) ? s.languages.filter((x) => x !== l) : [...s.languages, l],
-    }));
   }
 
   function toggleHelp(k: string) {
@@ -164,6 +158,39 @@ export function PostWizard({ kind, profileLanguages, defaults }: PostWizardProps
       </section>
 
       <section className="space-y-3">
+        <h2 className="font-serif text-xl">Flight numbers</h2>
+        <p className="text-sm text-muted-foreground">
+          <b>Strongly recommended.</b> Matching runs on exact flight number — without them, we can
+          only show people on the same route around the same date, not people on the same plane. One
+          per leg (in order).
+        </p>
+        <div className="space-y-2">
+          {state.route.map((_, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="w-14 text-xs text-muted-foreground">
+                Leg {i + 1}
+                {i < state.route.length - 1 ? ` (${state.route[i]} → ${state.route[i + 1]})` : null}
+              </span>
+              {i < state.route.length - 1 ? (
+                <Input
+                  value={state.flight_numbers[i] ?? ''}
+                  onChange={(e) => {
+                    const next = [...state.flight_numbers];
+                    next[i] = e.target.value.toUpperCase().replace(/\s+/g, '');
+                    setState({ ...state, flight_numbers: next });
+                  }}
+                  placeholder={i === 0 ? 'QR540' : 'QR23'}
+                  maxLength={10}
+                  className="w-32 font-mono uppercase tracking-wide"
+                  autoComplete="off"
+                />
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-3">
         <h2 className="font-serif text-xl">
           {isRequest ? 'Languages the parent speaks' : 'Languages you speak'}
         </h2>
@@ -171,17 +198,12 @@ export function PostWizard({ kind, profileLanguages, defaults }: PostWizardProps
           We rank matches by language first. Be honest — a mother tongue you can actually hold a
           conversation in.
         </p>
-        <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-3">
-          {LANGUAGES.map((l) => (
-            <label key={l} className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={state.languages.includes(l)}
-                onCheckedChange={() => toggleLanguage(l)}
-              />
-              {l}
-            </label>
-          ))}
-        </div>
+        <LanguageMultiSelect
+          options={LANGUAGES}
+          selected={state.languages}
+          onChange={(next) => setState((s) => ({ ...s, languages: next }))}
+          placeholder={isRequest ? 'Pick the parent’s languages…' : 'Pick your languages…'}
+        />
       </section>
 
       <section className="space-y-3">

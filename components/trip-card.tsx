@@ -24,13 +24,17 @@ export interface TripCardData {
   help_categories?: string[];
   thank_you_eur?: number | null;
   airline?: string | null;
+  flight_numbers?: string[] | null;
   verified_channel_count?: number;
 }
 
 interface TripCardProps {
   data: TripCardData;
   viewerLanguages?: string[];
-  scored?: Pick<Scored, 'band' | 'dayDelta' | 'routeMatch'>;
+  scored?: Pick<
+    Scored,
+    'band' | 'dayDelta' | 'routeMatch' | 'flightMatch' | 'matchedFlightNumbers'
+  >;
   className?: string;
 }
 
@@ -102,6 +106,32 @@ export function TripCard({ data, viewerLanguages = [], scored, className }: Trip
               </span>
             ) : null}
           </div>
+
+          {data.flight_numbers && data.flight_numbers.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {data.flight_numbers.map((fn) => {
+                const isMatch = !!scored?.matchedFlightNumbers?.some(
+                  (m) =>
+                    m.toLowerCase().replace(/\s+/g, '') === fn.toLowerCase().replace(/\s+/g, ''),
+                );
+                return (
+                  <Badge
+                    key={fn}
+                    variant={isMatch ? 'default' : 'outline'}
+                    className={cn(
+                      'gap-1 font-mono',
+                      isMatch && 'bg-saffron-600 text-saffron-50 hover:bg-saffron-700',
+                    )}
+                  >
+                    ✈ {fn}
+                    {isMatch ? (
+                      <span className="text-[10px] uppercase tracking-wide">same flight</span>
+                    ) : null}
+                  </Badge>
+                );
+              })}
+            </div>
+          ) : null}
 
           <LanguageChipRow
             languages={data.languages}

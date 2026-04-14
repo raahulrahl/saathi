@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
-import { ArrowRight, Calendar, Search } from 'lucide-react';
+import { ArrowRight, Calendar, Plane, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,6 +15,7 @@ interface RouteSearchProps {
   defaultFrom?: string;
   defaultTo?: string;
   defaultDate?: string;
+  defaultFlightNumber?: string;
 }
 
 export function RouteSearch({
@@ -22,17 +23,20 @@ export function RouteSearch({
   defaultFrom = '',
   defaultTo = '',
   defaultDate,
+  defaultFlightNumber = '',
 }: RouteSearchProps) {
   const router = useRouter();
   const [from, setFrom] = useState(defaultFrom);
   const [to, setTo] = useState(defaultTo);
   const [date, setDate] = useState(defaultDate ?? format(new Date(), 'yyyy-MM-dd'));
+  const [flight, setFlight] = useState(defaultFlightNumber);
   const [error, setError] = useState<string | null>(null);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const f = from.trim().toUpperCase();
     const t = to.trim().toUpperCase();
+    const fn = flight.trim().toUpperCase().replace(/\s+/g, '');
     if (!isValidIata(f) || !isValidIata(t)) {
       setError('Please pick valid 3-letter airport codes (e.g. CCU, AMS).');
       return;
@@ -43,43 +47,69 @@ export function RouteSearch({
     }
     setError(null);
     const params = new URLSearchParams({ from: f, to: t, date });
+    if (fn) params.set('fn', fn);
     router.push(`/search?${params.toString()}`);
   }
 
   return (
     <form
       onSubmit={submit}
-      className={cn(
-        'grid grid-cols-1 gap-3 rounded-xl border bg-card p-4 shadow-sm md:grid-cols-[1fr_auto_1fr_auto_auto]',
-        className,
-      )}
+      className={cn('space-y-3 rounded-xl border bg-card p-4 shadow-sm', className)}
     >
-      <IataField id="from" label="From" value={from} onChange={setFrom} placeholder="CCU" />
-      <div className="hidden items-center justify-center md:flex">
-        <ArrowRight className="size-5 text-muted-foreground" aria-hidden />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto_1fr_auto_auto]">
+        <IataField id="from" label="From" value={from} onChange={setFrom} placeholder="CCU" />
+        <div className="hidden items-center justify-center md:flex">
+          <ArrowRight className="size-5 text-muted-foreground" aria-hidden />
+        </div>
+        <IataField id="to" label="To" value={to} onChange={setTo} placeholder="AMS" />
+        <div className="space-y-1">
+          <Label htmlFor="date">Travel date</Label>
+          <div className="relative">
+            <Calendar className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col justify-end">
+          <Button type="submit" size="lg" className="h-10 md:h-[42px]">
+            <Search className="mr-1 size-4" />
+            Search
+          </Button>
+        </div>
       </div>
-      <IataField id="to" label="To" value={to} onChange={setTo} placeholder="AMS" />
+
       <div className="space-y-1">
-        <Label htmlFor="date">Travel date</Label>
+        <Label htmlFor="flight">
+          Flight number{' '}
+          <span className="text-xs font-normal text-muted-foreground">
+            — the strongest match. Leave blank to browse the route.
+          </span>
+        </Label>
         <div className="relative">
-          <Calendar className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Plane
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 -rotate-45 text-muted-foreground"
+            aria-hidden
+          />
           <Input
-            id="date"
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="pl-9"
+            id="flight"
+            value={flight}
+            onChange={(e) => setFlight(e.target.value.toUpperCase())}
+            placeholder="QR540"
+            className="pl-9 font-mono uppercase tracking-wide"
+            maxLength={10}
+            autoComplete="off"
+            inputMode="text"
           />
         </div>
       </div>
-      <div className="flex flex-col justify-end">
-        <Button type="submit" size="lg" className="h-10 md:h-[42px]">
-          <Search className="mr-1 size-4" />
-          Search
-        </Button>
-      </div>
+
       {error ? (
-        <p className="col-span-full text-sm text-destructive" role="alert">
+        <p className="text-sm text-destructive" role="alert">
           {error}
         </p>
       ) : null}

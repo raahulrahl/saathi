@@ -51,6 +51,19 @@ export default function LandingPage() {
             </Card>
           ))}
         </div>
+        <p className="mx-auto mt-10 max-w-2xl text-center text-sm text-muted-foreground">
+          Saathi is an{' '}
+          <a
+            href="https://github.com/raahulrahl/sathi"
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            open-source project
+          </a>{' '}
+          — the matching logic, the schema, the trust rules are all public. Read the code, open an
+          issue, send a PR.
+        </p>
       </section>
 
       {/* Why Saathi */}

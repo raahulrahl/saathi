@@ -19,21 +19,24 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic';
 
 interface SearchPageProps {
-  searchParams: Promise<{ from?: string; to?: string; date?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; date?: string; fn?: string }>;
 }
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
-  const { from = '', to = '', date = '' } = await searchParams;
+  const { from = '', to = '', date = '', fn = '' } = await searchParams;
   const f = from.toUpperCase();
   const t = to.toUpperCase();
+  const fnNorm = fn.toUpperCase().replace(/\s+/g, '');
   const validInput = isValidIata(f) && isValidIata(t) && !!date;
 
   return (
     <div className="container py-8">
       <div className="space-y-1">
-        <h1 className="font-serif text-3xl">Who's on this route?</h1>
+        <h1 className="font-serif text-3xl">Who&apos;s on this flight?</h1>
         <p className="text-sm text-muted-foreground">
-          Results cover ±3 days. Language match first, then date proximity.
+          {fnNorm
+            ? 'Exact flight-number matches first — everyone else is on the same plane.'
+            : 'Same-day route matches. Add a flight number to tighten the search to the same aircraft.'}
         </p>
       </div>
 
@@ -42,6 +45,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         defaultFrom={f}
         defaultTo={t}
         {...(date ? { defaultDate: date } : {})}
+        {...(fnNorm ? { defaultFlightNumber: fnNorm } : {})}
       />
 
       {!validInput ? (
@@ -53,14 +57,24 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         />
       ) : (
         <Suspense fallback={<div className="mt-10 text-sm text-muted-foreground">Loading…</div>}>
-          <Results from={f} to={t} date={date} />
+          <Results from={f} to={t} date={date} flightNumber={fnNorm || null} />
         </Suspense>
       )}
     </div>
   );
 }
 
-async function Results({ from, to, date }: { from: string; to: string; date: string }) {
+async function Results({
+  from,
+  to,
+  date,
+  flightNumber,
+}: {
+  from: string;
+  to: string;
+  date: string;
+  flightNumber: string | null;
+}) {
   const supabase = await createSupabaseServerClient();
 
   // Authed viewer's languages used for in-card bolding.
@@ -79,24 +93,34 @@ async function Results({ from, to, date }: { from: string; to: string; date: str
     }
   }
 
-  // Date window ±3 days. We fetch a slightly wider window and filter+rank in TS.
-  const { start, end } = dateWindow(date, 3);
+  // Two modes:
+  //   * flight-number search — strict exact match on flight_numbers array;
+  //     the DB-level `overlaps` does the heavy lifting via the GIN index.
+  //   * route + date search — same-day + same-route, with a ±1 day window
+  //     so red-eyes and timezone fuzz don't miss. (Was ±3 before; a wider
+  //     window lied about matches because ±3d on the same route rarely
+  //     means "same plane".)
+  const DATE_WINDOW_DAYS = 1;
+  const { start, end } = dateWindow(date, DATE_WINDOW_DAYS);
 
-  // Pull the public_trips view + verified count, filtered to routes that
-  // include both endpoints at any position (we further filter in TS via
-  // routeMatch). Keep it fast with a date range.
-  const { data: trips, error } = await supabase
+  let query = supabase
     .from('public_trips')
     .select(
-      `id, user_id, kind, route, travel_date, airline, languages,
-       gender_preference, help_categories, thank_you_eur, notes, status,
-       elderly_age_band, created_at`,
+      `id, user_id, kind, route, travel_date, airline, flight_numbers,
+       languages, gender_preference, help_categories, thank_you_eur, notes,
+       status, elderly_age_band, created_at`,
     )
     .eq('status', 'open')
-    .gte('travel_date', start)
-    .lte('travel_date', end)
     .contains('route', [from])
     .contains('route', [to]);
+
+  if (flightNumber) {
+    query = query.overlaps('flight_numbers', [flightNumber]);
+  } else {
+    query = query.gte('travel_date', start).lte('travel_date', end);
+  }
+
+  const { data: trips, error } = await query;
 
   if (error) {
     return (
@@ -150,6 +174,7 @@ async function Results({ from, to, date }: { from: string; to: string; date: str
       help_categories: tr.help_categories,
       thank_you_eur: tr.thank_you_eur,
       airline: tr.airline,
+      flight_numbers: tr.flight_numbers ?? null,
       verified_channel_count: p?.verified_channel_count ?? 0,
     };
     return {
@@ -159,6 +184,7 @@ async function Results({ from, to, date }: { from: string; to: string; date: str
       travel_date: tr.travel_date,
       languages: tr.languages,
       primary_language: p?.primary_language ?? null,
+      flight_numbers: tr.flight_numbers ?? null,
       verified_channel_count: p?.verified_channel_count ?? 0,
       kind: tr.kind,
       card,
@@ -169,7 +195,8 @@ async function Results({ from, to, date }: { from: string; to: string; date: str
     origin: from,
     destination: to,
     date,
-    dateWindowDays: 3,
+    dateWindowDays: DATE_WINDOW_DAYS,
+    ...(flightNumber ? { flightNumbers: [flightNumber] } : {}),
     viewerLanguages,
     viewerPrimaryLanguage: viewerPrimary,
   });
@@ -180,10 +207,16 @@ async function Results({ from, to, date }: { from: string; to: string; date: str
   return (
     <>
       <div className="mt-8 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <Calendar className="size-4" />
-          ±3 days around {date}
-        </span>
+        {flightNumber ? (
+          <span className="inline-flex items-center gap-1.5 font-mono font-semibold text-foreground">
+            ✈ {flightNumber}
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5">
+            <Calendar className="size-4" />
+            ±1 day around {date}
+          </span>
+        )}
         <Separator orientation="vertical" className="h-4" />
         <span>
           {formatAirport(from)} → {formatAirport(to)}
