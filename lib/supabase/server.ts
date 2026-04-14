@@ -10,7 +10,7 @@ import { auth } from '@clerk/nextjs/server';
  *   2. We fetch that JWT here via `auth().getToken({ template: 'supabase' })`.
  *   3. We pass it as a Bearer token on every Supabase request.
  *   4. Supabase decodes the claim `sub` as the Clerk user id.
- *   5. Our RLS policies call `auth.clerk_user_id()` (from 0005_clerk.sql),
+ *   5. Our RLS policies call `public.clerk_user_id()` (from 0005_clerk.sql),
  *      which reads that same `sub` as text — matching `profiles.id`.
  *
  * For anonymous viewers (no Clerk session) we fall back to the anon key,

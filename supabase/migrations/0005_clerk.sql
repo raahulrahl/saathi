@@ -11,8 +11,8 @@
 --   1. Drops the old auth-schema triggers (they never fire under Clerk).
 --   2. Drops all public tables that FK'd into auth.users(id).
 --   3. Recreates every table with `text` primary keys for user references.
---   4. Adds `auth.clerk_user_id()` helper returning the `sub` claim as text.
---   5. Reapplies every RLS policy, re-keyed on `auth.clerk_user_id()`.
+--   4. Adds `public.clerk_user_id()` helper returning the `sub` claim as text.
+--   5. Reapplies every RLS policy, re-keyed on `public.clerk_user_id()`.
 --   6. Recreates views and the remaining triggers (match flow + completion).
 --
 -- Safe-by-nuke: this migration assumes no production user data yet. Running
@@ -53,9 +53,11 @@ drop function if exists public.handle_match_completion() cascade;
 
 -- ---------------------------------------------------------------------------
 -- 3. Clerk-aware helper. Returns the Clerk user id from the JWT as text.
---    auth.uid() would cast to uuid and fail; this returns the raw string.
+--    Lives in `public`, not `auth`: Supabase Cloud locks down the auth schema,
+--    so user-defined functions there fail with SQLSTATE 42501. `auth.uid()`
+--    would also cast `sub` to uuid and fail for Clerk ids like `user_2abc…`.
 -- ---------------------------------------------------------------------------
-create or replace function auth.clerk_user_id()
+create or replace function public.clerk_user_id()
 returns text
 language sql
 stable
@@ -67,7 +69,7 @@ as $$
   );
 $$;
 
-grant execute on function auth.clerk_user_id() to anon, authenticated, service_role;
+grant execute on function public.clerk_user_id() to anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- 4. Tables, now keyed on text user ids from Clerk
@@ -228,7 +230,7 @@ create table public.blocks (
 );
 
 -- ---------------------------------------------------------------------------
--- 5. RLS — same intent as 0002_rls.sql, re-keyed to auth.clerk_user_id()
+-- 5. RLS — same intent as 0002_rls.sql, re-keyed to public.clerk_user_id()
 -- ---------------------------------------------------------------------------
 alter table public.profiles         enable row level security;
 alter table public.verifications    enable row level security;
@@ -244,58 +246,58 @@ alter table public.blocks           enable row level security;
 -- profiles: public read of the row; the public_profiles view strips PII
 create policy "profiles: public read" on public.profiles for select using (true);
 create policy "profiles: owner update" on public.profiles
-  for update using (auth.clerk_user_id() = id) with check (auth.clerk_user_id() = id);
+  for update using (public.clerk_user_id() = id) with check (public.clerk_user_id() = id);
 -- Inserts come from the service-role webhook. No anon/auth insert policy.
 
 -- verifications: existence public; handle stripped in the view
 create policy "verifications: public read" on public.verifications for select using (true);
 create policy "verifications: owner writes" on public.verifications
-  for all using (auth.clerk_user_id() = user_id) with check (auth.clerk_user_id() = user_id);
+  for all using (public.clerk_user_id() = user_id) with check (public.clerk_user_id() = user_id);
 
 -- trips: public read of whole row; public_trips view strips elderly PII
 create policy "trips: public read" on public.trips for select using (true);
 create policy "trips: owner writes" on public.trips
-  for all using (auth.clerk_user_id() = user_id) with check (auth.clerk_user_id() = user_id);
+  for all using (public.clerk_user_id() = user_id) with check (public.clerk_user_id() = user_id);
 create policy "trips: match participants read full row" on public.trips
   for select using (
     exists (
       select 1 from public.matches m
       where m.trip_id = trips.id
-        and (m.poster_id = auth.clerk_user_id() or m.requester_id = auth.clerk_user_id())
+        and (m.poster_id = public.clerk_user_id() or m.requester_id = public.clerk_user_id())
     )
   );
 
 -- match_requests
 create policy "match_requests: requester or trip owner read" on public.match_requests
   for select using (
-    auth.clerk_user_id() = requester_id
-    or exists (select 1 from public.trips t where t.id = match_requests.trip_id and t.user_id = auth.clerk_user_id())
+    public.clerk_user_id() = requester_id
+    or exists (select 1 from public.trips t where t.id = match_requests.trip_id and t.user_id = public.clerk_user_id())
   );
 
 create policy "match_requests: requester insert" on public.match_requests
   for insert with check (
-    auth.clerk_user_id() = requester_id
+    public.clerk_user_id() = requester_id
     and exists (
       select 1 from public.trips t
       where t.id = trip_id
-        and t.user_id <> auth.clerk_user_id()
+        and t.user_id <> public.clerk_user_id()
         and t.status = 'open'
     )
   );
 
 create policy "match_requests: trip owner responds" on public.match_requests
   for update using (
-    exists (select 1 from public.trips t where t.id = match_requests.trip_id and t.user_id = auth.clerk_user_id())
+    exists (select 1 from public.trips t where t.id = match_requests.trip_id and t.user_id = public.clerk_user_id())
   ) with check (
-    exists (select 1 from public.trips t where t.id = match_requests.trip_id and t.user_id = auth.clerk_user_id())
+    exists (select 1 from public.trips t where t.id = match_requests.trip_id and t.user_id = public.clerk_user_id())
   );
 
 -- matches
 create policy "matches: participants read" on public.matches
-  for select using (auth.clerk_user_id() = poster_id or auth.clerk_user_id() = requester_id);
+  for select using (public.clerk_user_id() = poster_id or public.clerk_user_id() = requester_id);
 create policy "matches: participants update completion" on public.matches
-  for update using (auth.clerk_user_id() = poster_id or auth.clerk_user_id() = requester_id)
-  with check (auth.clerk_user_id() = poster_id or auth.clerk_user_id() = requester_id);
+  for update using (public.clerk_user_id() = poster_id or public.clerk_user_id() = requester_id)
+  with check (public.clerk_user_id() = poster_id or public.clerk_user_id() = requester_id);
 
 -- messages
 create policy "messages: participants read" on public.messages
@@ -303,16 +305,16 @@ create policy "messages: participants read" on public.messages
     exists (
       select 1 from public.matches m
       where m.id = messages.match_id
-        and (m.poster_id = auth.clerk_user_id() or m.requester_id = auth.clerk_user_id())
+        and (m.poster_id = public.clerk_user_id() or m.requester_id = public.clerk_user_id())
     )
   );
 create policy "messages: participants send" on public.messages
   for insert with check (
-    sender_id = auth.clerk_user_id()
+    sender_id = public.clerk_user_id()
     and exists (
       select 1 from public.matches m
       where m.id = messages.match_id
-        and (m.poster_id = auth.clerk_user_id() or m.requester_id = auth.clerk_user_id())
+        and (m.poster_id = public.clerk_user_id() or m.requester_id = public.clerk_user_id())
         and m.status in ('active','completed')
     )
   );
@@ -321,14 +323,14 @@ create policy "messages: participants send" on public.messages
 create policy "reviews: public read" on public.reviews for select using (true);
 create policy "reviews: participants write after completion" on public.reviews
   for insert with check (
-    reviewer_id = auth.clerk_user_id()
+    reviewer_id = public.clerk_user_id()
     and exists (
       select 1 from public.matches m
       where m.id = reviews.match_id
         and m.status = 'completed'
-        and (m.poster_id = auth.clerk_user_id() or m.requester_id = auth.clerk_user_id())
+        and (m.poster_id = public.clerk_user_id() or m.requester_id = public.clerk_user_id())
         and reviewee_id in (m.poster_id, m.requester_id)
-        and reviewee_id <> auth.clerk_user_id()
+        and reviewee_id <> public.clerk_user_id()
     )
   );
 
@@ -338,18 +340,18 @@ create policy "trip_photos: participants read private" on public.trip_photos
     exists (
       select 1 from public.matches m
       where m.id = trip_photos.match_id
-        and (m.poster_id = auth.clerk_user_id() or m.requester_id = auth.clerk_user_id())
+        and (m.poster_id = public.clerk_user_id() or m.requester_id = public.clerk_user_id())
     )
   );
 create policy "trip_photos: public read consented" on public.trip_photos
   for select using (visibility in ('profile','public') and other_party_consented = true);
 create policy "trip_photos: uploader inserts" on public.trip_photos
   for insert with check (
-    uploader_id = auth.clerk_user_id()
+    uploader_id = public.clerk_user_id()
     and exists (
       select 1 from public.matches m
       where m.id = trip_photos.match_id
-        and (m.poster_id = auth.clerk_user_id() or m.requester_id = auth.clerk_user_id())
+        and (m.poster_id = public.clerk_user_id() or m.requester_id = public.clerk_user_id())
     )
   );
 create policy "trip_photos: participants update consent" on public.trip_photos
@@ -357,25 +359,25 @@ create policy "trip_photos: participants update consent" on public.trip_photos
     exists (
       select 1 from public.matches m
       where m.id = trip_photos.match_id
-        and (m.poster_id = auth.clerk_user_id() or m.requester_id = auth.clerk_user_id())
+        and (m.poster_id = public.clerk_user_id() or m.requester_id = public.clerk_user_id())
     )
   ) with check (
     exists (
       select 1 from public.matches m
       where m.id = trip_photos.match_id
-        and (m.poster_id = auth.clerk_user_id() or m.requester_id = auth.clerk_user_id())
+        and (m.poster_id = public.clerk_user_id() or m.requester_id = public.clerk_user_id())
     )
   );
 
 -- reports
 create policy "reports: reporter insert" on public.reports
-  for insert with check (reporter_id = auth.clerk_user_id());
+  for insert with check (reporter_id = public.clerk_user_id());
 create policy "reports: reporter read own" on public.reports
-  for select using (reporter_id = auth.clerk_user_id());
+  for select using (reporter_id = public.clerk_user_id());
 
 -- blocks
 create policy "blocks: owner rw" on public.blocks
-  for all using (blocker_id = auth.clerk_user_id()) with check (blocker_id = auth.clerk_user_id());
+  for all using (blocker_id = public.clerk_user_id()) with check (blocker_id = public.clerk_user_id());
 
 -- ---------------------------------------------------------------------------
 -- 6. Match-flow triggers (unchanged behaviour, same function bodies)
