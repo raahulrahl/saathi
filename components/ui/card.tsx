@@ -1,11 +1,18 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
+/**
+ * Card — white on cream, warm oat border, Clay's signature three-layer
+ * shadow. The 24px (3xl) radius is structural Clay — nothing looks sharp.
+ */
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('rounded-lg border bg-card text-card-foreground shadow-sm', className)}
+      className={cn(
+        'rounded-3xl border border-oat bg-card text-card-foreground shadow-clay',
+        className,
+      )}
       {...props}
     />
   ),
@@ -21,18 +28,14 @@ CardHeader.displayName = 'CardHeader';
 
 const CardTitle = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn('font-serif text-2xl font-semibold leading-none tracking-tight', className)}
-      {...props}
-    />
+    <div ref={ref} className={cn('text-card-heading', className)} {...props} />
   ),
 );
 CardTitle.displayName = 'CardTitle';
 
 const CardDescription = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />
+    <div ref={ref} className={cn('text-base text-warm-silver', className)} {...props} />
   ),
 );
 CardDescription.displayName = 'CardDescription';

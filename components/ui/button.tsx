@@ -3,24 +3,47 @@ import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
+/**
+ * Button — Clay-styled. The default variant is a solid black "primary" button
+ * with the signature playful hover (rotateZ + hard offset shadow). Swatch
+ * variants use the named colors: matcha (action/go), ube (secondary), lemon
+ * (warning-free emphasis), pomegranate (destructive).
+ *
+ * The .clay-hover class carries the micro-animation (defined in globals.css).
+ */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  [
+    'clay-hover',
+    'inline-flex items-center justify-center gap-2 whitespace-nowrap',
+    'font-medium tracking-tight',
+    'ring-offset-background transition-colors',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+    'disabled:pointer-events-none disabled:opacity-50',
+    'select-none',
+  ].join(' '),
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-        outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        ghost: 'hover:bg-accent hover:text-accent-foreground',
-        link: 'text-primary underline-offset-4 hover:underline',
+        default: 'rounded-full bg-foreground text-background hover:bg-foreground/95',
+        matcha: 'rounded-full bg-matcha-600 text-white hover:bg-matcha-800',
+        ube: 'rounded-full bg-ube-800 text-white hover:bg-ube-900',
+        lemon: 'rounded-full bg-lemon-500 text-foreground hover:bg-lemon-700 hover:text-white',
+        pomegranate:
+          'rounded-full bg-pomegranate-400 text-foreground hover:bg-pomegranate-600 hover:text-white',
+        white: 'rounded-full bg-white text-foreground border border-oat hover:bg-oat-light',
+        outline: 'rounded-full border border-oat bg-transparent text-foreground hover:bg-oat-light',
+        ghost:
+          'rounded-full bg-transparent text-foreground hover:bg-oat-light hover:text-foreground',
+        link: 'rounded-none text-foreground underline-offset-4 hover:underline clay-hover:transform-none',
+        destructive:
+          'rounded-full bg-pomegranate-600 text-white hover:bg-pomegranate-400 hover:text-foreground',
       },
       size: {
-        default: 'h-10 px-4 py-2',
-        sm: 'h-9 rounded-md px-3',
-        lg: 'h-12 rounded-md px-6 text-base',
-        xl: 'h-14 rounded-lg px-8 text-base',
-        icon: 'size-10',
+        default: 'h-11 px-5 text-sm',
+        sm: 'h-9 px-4 text-sm',
+        lg: 'h-12 px-6 text-base',
+        xl: 'h-14 px-8 text-base',
+        icon: 'size-11',
       },
     },
     defaultVariants: { variant: 'default', size: 'default' },

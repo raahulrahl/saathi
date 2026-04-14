@@ -9,9 +9,9 @@ interface LanguageChipProps {
 }
 
 /**
- * Language pill. When a language matches the viewer's, it's rendered bold
- * and in the warm palette — per Product Spec §3.5, the matched language is
- * bolded inside the card.
+ * Language pill. Matched languages render in the Matcha swatch (strong
+ * cultural choice — "match on language" becomes visually the same motion
+ * as "go"). Primary language gets a Lemon ring to indicate mother tongue.
  */
 export function LanguageChip({
   language,
@@ -21,12 +21,11 @@ export function LanguageChip({
 }: LanguageChipProps) {
   return (
     <Badge
-      variant={matched ? 'default' : 'secondary'}
+      variant={matched ? 'matcha' : 'outline'}
       className={cn(
-        'rounded-full font-normal',
-        matched && 'bg-saffron-600 font-semibold text-saffron-50 hover:bg-saffron-700',
-        primary && matched && 'ring-2 ring-saffron-300 ring-offset-1',
-        !matched && 'bg-secondary',
+        'font-normal',
+        matched && 'font-semibold',
+        primary && matched && 'ring-2 ring-lemon-500 ring-offset-1 ring-offset-background',
         className,
       )}
     >

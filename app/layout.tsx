@@ -1,12 +1,27 @@
 import type { Metadata } from 'next';
-import { Inter, Fraunces } from 'next/font/google';
+import { Geist, Geist_Mono, Space_Mono } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
 import './globals.css';
 
-const sans = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
-const serif = Fraunces({ subsets: ['latin'], variable: '--font-serif', display: 'swap' });
+// Closest free analog to Roobert (the Clay typeface, not licensable for free use).
+// When a Roobert license is secured, swap this block for next/font/local without
+// touching anywhere else — CSS variables stay the same.
+const display = Geist({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
+const mono = Space_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+  weight: ['400', '700'],
+  display: 'swap',
+});
+// Loaded but unused right now — reserved for future code-like labels if we
+// want a Geist Mono variant instead of Space Mono.
+const _geistMono = Geist_Mono({
+  subsets: ['latin'],
+  variable: '--font-geist-mono',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: {
@@ -27,14 +42,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <ClerkProvider
       appearance={{
         variables: {
-          colorPrimary: 'hsl(21 90% 48%)', // saffron-600 — matches our primary
-          borderRadius: '0.75rem',
+          colorPrimary: '#000000',
+          borderRadius: '12px',
           fontFamily: 'var(--font-sans), system-ui, sans-serif',
         },
       }}
     >
-      <html lang="en" className={`${sans.variable} ${serif.variable}`}>
-        <body className="flex min-h-screen flex-col font-sans">
+      <html lang="en" className={`${display.variable} ${mono.variable} ${_geistMono.variable}`}>
+        <body className="flex min-h-screen flex-col bg-background font-sans text-foreground antialiased">
           <SiteHeader />
           <main className="flex-1">{children}</main>
           <SiteFooter />
