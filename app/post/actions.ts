@@ -54,18 +54,10 @@ export async function createTripAction(input: TripInput) {
     return { ok: false, error: 'Please sign in.' } as const;
   }
 
-  // Enforce the ≥2 verifications requirement server-side.
-  const { data: verifs } = await supabase
-    .from('verifications')
-    .select('channel, verified_at')
-    .eq('user_id', userId);
-  const verifiedCount = (verifs ?? []).filter((v) => v.verified_at).length;
-  if (verifiedCount < 2) {
-    return {
-      ok: false,
-      error: 'Please verify at least two channels before posting.',
-    } as const;
-  }
+  // The 2-of-N verification gate was dropped as part of the onboarding
+  // simplification — any signed-in user who completed the onboarding form
+  // can post. Trust badges still render on profile cards from whatever
+  // verification rows the Clerk webhook populates behind the scenes.
 
   const p = parsed.data;
   if (p.notes) {

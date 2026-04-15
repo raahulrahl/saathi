@@ -1,175 +1,69 @@
-import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
-import { Check, Linkedin, MessageCircle, Twitter } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { redirect } from 'next/navigation';
+import type { Metadata } from 'next';
 import { syncClerkUserToSupabase } from '@/lib/clerk-sync';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { LinkOAuthButton } from './link-oauth-button';
-import { WhatsAppVerify } from './whatsapp-verify';
-import { ProfileBasics } from './profile-basics';
+import { OnboardingForm } from './onboarding-form';
 
-export const metadata: Metadata = { title: 'Welcome to Saathi' };
+export const metadata: Metadata = { title: 'Welcome · Saathi' };
 
-const CHANNELS: Array<{
-  id: 'linkedin' | 'twitter' | 'whatsapp';
-  label: string;
-  blurb: string;
-  icon: React.ComponentType<{ className?: string }>;
-  linkable: boolean;
-}> = [
-  {
-    id: 'linkedin',
-    label: 'LinkedIn',
-    blurb: 'A real employer and a real network. Strongest signal for families.',
-    icon: Linkedin,
-    linkable: true,
-  },
-  {
-    id: 'twitter',
-    label: 'X (Twitter)',
-    blurb: 'Account age and post history.',
-    icon: Twitter,
-    linkable: true,
-  },
-  {
-    id: 'whatsapp',
-    label: 'WhatsApp',
-    blurb: 'A working WhatsApp number. Lingua franca for Indian parents.',
-    icon: MessageCircle,
-    linkable: false,
-  },
-];
-
+/**
+ * Onboarding is now a single short form. The earlier version required
+ * users to link ≥2 OAuth providers and verify WhatsApp via Twilio OTP
+ * before they could post — way too much friction pre-launch, and users
+ * were dropping off at the verification step.
+ *
+ * New flow:
+ *   1. Clerk handles sign-in (any of Google / Facebook / LinkedIn / X).
+ *   2. syncClerkUserToSupabase inserts a default profile row on arrival.
+ *   3. This page loads that row into a form for the user to finish — role,
+ *      languages, WhatsApp number (plain field, no OTP), optional bio.
+ *   4. Submit writes through a server action and redirects to /dashboard.
+ *
+ * No gating, no verification channels, no "you need 2 more links." Anyone
+ * signed in and through this form can post / request / browse.
+ *
+ * The verifications table is still maintained behind the scenes by the
+ * Clerk webhook + self-heal — we use it for trust badges on profile
+ * cards, not as a gate.
+ */
 export default async function OnboardingPage() {
   const { userId } = await auth();
   if (!userId) redirect('/auth/sign-in?redirect_url=/onboarding');
 
-  // Self-heal so the app works even before the Clerk webhook is wired up.
-  // Pulls the current Clerk user state and writes profile + verifications
-  // rows. Idempotent — safe to run on every load.
+  // Self-heal: create/update profile row from Clerk state.
   await syncClerkUserToSupabase(userId);
 
   const supabase = await createSupabaseServerClient();
-
-  const [{ data: profile }, { data: verifications }] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
-    supabase.from('verifications').select('channel, verified_at, handle').eq('user_id', userId),
-  ]);
-
-  const verifiedChannels = new Set(
-    (verifications ?? []).filter((v) => v.verified_at).map((v) => v.channel),
-  );
-  // Email is intentionally NOT counted — every Clerk sign-up verifies an
-  // email, so counting it would give a free badge. The minimum is ≥2 of
-  // the three available channels: LinkedIn, X, WhatsApp.
-  const verifiedCount = verifiedChannels.size;
-  const canPost = verifiedCount >= 2;
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, role, display_name, full_name, bio, languages, primary_language, whatsapp_number')
+    .eq('id', userId)
+    .maybeSingle();
 
   return (
-    <div className="container max-w-3xl py-10">
-      <header className="space-y-2">
-        <p className="text-xs uppercase tracking-[0.15em] text-muted-foreground">Onboarding</p>
-        <h1 className="font-serif text-3xl">
-          Welcome to Saathi, {profile?.display_name ?? 'friend'}.
+    <div className="container max-w-xl py-14">
+      <div className="space-y-2 text-center">
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.02em] md:text-4xl">
+          Welcome to <span className="text-marigold-700">Saathi</span>.
         </h1>
-        <p className="text-muted-foreground">
-          Connect at least two verification channels, then tell us a little about yourself.
-          Everything below takes under five minutes.
+        <p className="text-base leading-relaxed text-warm-charcoal">
+          Just a few details so other travellers know who they&rsquo;re meeting. Takes a minute.
         </p>
-      </header>
+      </div>
 
-      {canPost ? (
-        <Alert variant="warm" className="mt-6">
-          <Check className="size-4" />
-          <AlertTitle>You&apos;re verified.</AlertTitle>
-          <AlertDescription>
-            You can now post trips and send requests.{' '}
-            <a href="/post/request" className="underline">
-              Post a request
-            </a>{' '}
-            or{' '}
-            <a href="/post/offer" className="underline">
-              offer to help
-            </a>
-            .
-          </AlertDescription>
-        </Alert>
-      ) : (
-        <Alert className="mt-6">
-          <AlertTitle>
-            You need {2 - verifiedCount} more channel{verifiedCount === 1 ? '' : 's'}.
-          </AlertTitle>
-          <AlertDescription>
-            Two verified channels are the minimum before posting or requesting a Saathi. Pick any
-            two below.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <section className="mt-8 space-y-4">
-        <h2 className="font-serif text-xl">Verification channels</h2>
-        <div className="grid gap-3 md:grid-cols-2">
-          {CHANNELS.map(({ id, label, blurb, icon: Icon, linkable }) => {
-            const verified = verifiedChannels.has(id);
-            return (
-              <Card key={id}>
-                <CardContent className="space-y-3 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <Icon className="text-saffron-600 size-5" aria-hidden />
-                      <div className="font-serif text-lg">{label}</div>
-                    </div>
-                    {verified ? (
-                      <Badge variant="success" className="gap-1">
-                        <Check className="size-3" />
-                        Verified
-                      </Badge>
-                    ) : (
-                      <Badge variant="muted">Not linked</Badge>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground">{blurb}</p>
-                  {!verified && linkable && (id === 'linkedin' || id === 'twitter') ? (
-                    <LinkOAuthButton provider={id} />
-                  ) : null}
-                  {id === 'whatsapp' ? <WhatsAppVerify alreadyVerified={verified} /> : null}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="mt-10">
-        <h2 className="font-serif text-xl">About you</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          These show up on your profile and drive matching.
-        </p>
-        <div className="mt-4">
-          {profile ? (
-            <ProfileBasics
-              initial={{
-                role: profile.role,
-                display_name: profile.display_name ?? '',
-                full_name: profile.full_name ?? '',
-                bio: profile.bio ?? '',
-                languages: profile.languages ?? [],
-                primary_language: profile.primary_language,
-                gender: profile.gender ?? '',
-                photo_url: profile.photo_url ?? '',
-              }}
-            />
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Profile is still being created. Refresh in a moment — the Clerk webhook creates it on
-              signup.
-            </p>
-          )}
-        </div>
-      </section>
+      <div className="mt-10">
+        <OnboardingForm
+          initialValues={{
+            displayName: profile?.display_name ?? '',
+            role: (profile?.role as 'family' | 'companion' | null) ?? null,
+            primaryLanguage: profile?.primary_language ?? 'English',
+            languages: profile?.languages ?? ['English'],
+            whatsappNumber: profile?.whatsapp_number ?? '',
+            bio: profile?.bio ?? '',
+          }}
+        />
+      </div>
     </div>
   );
 }

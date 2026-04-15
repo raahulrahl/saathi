@@ -21,14 +21,13 @@ export default async function SendRequestPage({ params }: { params: Promise<{ id
   if (trip.user_id === userId) redirect(`/trip/${id}`);
   if (trip.status !== 'open') redirect(`/trip/${id}`);
 
-  const [{ data: existing }, { data: verifs }, { data: poster }] = await Promise.all([
+  const [{ data: existing }, { data: poster }] = await Promise.all([
     supabase
       .from('match_requests')
       .select('id, status, created_at')
       .eq('trip_id', id)
       .eq('requester_id', userId)
       .maybeSingle(),
-    supabase.from('verifications').select('channel, verified_at').eq('user_id', userId),
     supabase
       .from('public_profiles')
       .select('display_name, primary_language, role')
@@ -36,7 +35,6 @@ export default async function SendRequestPage({ params }: { params: Promise<{ id
       .maybeSingle(),
   ]);
 
-  const verifiedCount = (verifs ?? []).filter((v) => v.verified_at).length;
   const isFamilyPoster = poster?.role === 'family';
 
   return (
@@ -63,17 +61,7 @@ export default async function SendRequestPage({ params }: { params: Promise<{ id
         </CardContent>
       </Card>
 
-      {verifiedCount < 2 ? (
-        <Alert variant="warm" className="mt-6">
-          <AlertTitle>Verify two channels first</AlertTitle>
-          <AlertDescription>
-            Please link at least two verification channels before sending a request.{' '}
-            <a href="/onboarding" className="underline">
-              Finish onboarding →
-            </a>
-          </AlertDescription>
-        </Alert>
-      ) : existing ? (
+      {existing ? (
         <Alert className="mt-6">
           <AlertTitle>You've already sent a request</AlertTitle>
           <AlertDescription>

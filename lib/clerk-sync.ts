@@ -23,21 +23,28 @@ type Verif = {
   proof: Record<string, unknown>;
 };
 
-// Mirrors app/api/clerk-webhook/route.ts — only LinkedIn and X are enabled
-// providers. Google and GitHub are deliberately off (product decision).
+// Mirrors app/api/clerk-webhook/route.ts — maps whichever OAuth providers
+// are enabled in Clerk to our verifications.channel enum.
 //
 // Matches by substring rather than exact string: Clerk has varied the
 // provider slug across versions ('oauth_linkedin_oidc', 'linkedin_oidc',
 // 'Linkedin_oidc' — the casing we literally saw in a user error) and a
 // strict switch silently dropped verified accounts on the floor when the
 // slug didn't match any case. Substring match is resilient to any of
-// these variants and still won't false-positive into Google/GitHub.
+// these variants.
+//
+// Note: as of the onboarding simplification, verifications aren't a gate
+// anymore — any signed-in user can post. We still mirror OAuth identities
+// into the verifications table for trust badges on profile cards and
+// future trust-scoring.
 function providerToChannel(provider: string): string | null {
   const p = provider.toLowerCase();
   if (p.includes('linkedin')) return 'linkedin';
   if (p.includes('twitter') || p === 'oauth_x' || p === 'x' || p.endsWith('_x')) {
     return 'twitter';
   }
+  if (p.includes('google')) return 'google';
+  if (p.includes('facebook')) return 'facebook';
   return null;
 }
 

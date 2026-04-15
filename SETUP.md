@@ -77,24 +77,31 @@ And in **Database → Functions**: `public.clerk_user_id()`.
 
 ### Enable OAuth providers
 
-**User & Authentication → Social Connections**, enable exactly these two:
+**User & Authentication → Social Connections**, enable these four:
 
-- **LinkedIn (OIDC)** — picks up the `oauth_linkedin_oidc` provider string
+- **Google**
+- **Facebook**
+- **LinkedIn (OIDC)** — pick the OIDC variant; the webhook mapping is keyed on `oauth_linkedin_oidc`
 - **X (Twitter)**
 
-Google and GitHub are deliberately **not** used — the product decision is
-that trust signals should come from graphs where the presence of an account
-is itself meaningful (LinkedIn = real job, X = real network), not from
-"everyone already has one" identity providers. Leave Email on; it's the
-fallback sign-in method and doesn't count as a verification channel
-(every Clerk sign-up verifies email — counting it would give a free badge).
+Also leave **Email** on — it's the fallback sign-in method. Email alone
+doesn't count as a "verified social account" (every Clerk sign-up verifies
+email; counting it would mean a free badge).
 
 For each provider, either use Clerk's shared credentials (fine for dev) or
 create an OAuth app on the provider's side and paste client ID + secret.
-The webhook in `app/api/clerk-webhook/route.ts` and the self-heal in
-`lib/clerk-sync.ts` both map `oauth_linkedin_oidc` / `oauth_linkedin` to
-`linkedin`, and `oauth_x` / `oauth_twitter` to `twitter`. Any other
-provider Clerk reports is ignored.
+The Clerk webhook in `app/api/clerk-webhook/route.ts` and the self-heal in
+`lib/clerk-sync.ts` both map provider slugs by substring:
+
+- anything containing `linkedin` → `linkedin`
+- `oauth_x` / `oauth_twitter` / anything containing `twitter` → `twitter`
+- anything containing `google` → `google`
+- anything containing `facebook` → `facebook`
+
+Identities Clerk reports with other providers (GitHub, Discord, etc.)
+are ignored on the way into our `verifications` table. The table itself
+is used for trust badges on profile cards — it's no longer a gate for
+posting or sending requests (see the onboarding simplification).
 
 ---
 

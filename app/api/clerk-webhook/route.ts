@@ -57,6 +57,8 @@ function providerToChannel(provider: string): string | null {
   if (p.includes('twitter') || p === 'oauth_x' || p === 'x' || p.endsWith('_x')) {
     return 'twitter';
   }
+  if (p.includes('google')) return 'google';
+  if (p.includes('facebook')) return 'facebook';
   return null;
 }
 
