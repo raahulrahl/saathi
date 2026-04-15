@@ -17,33 +17,38 @@ function WhatsAppIcon({ className }: { className?: string }) {
 interface TripShareButtonsProps {
   tripId: string;
   route: string[];
+  /** Canonical (production) URL for the trip — always the public origin,
+   * never localhost. Server passes this in from `siteUrl()`. Ensures the
+   * share preview actually works once pasted into WhatsApp or Facebook. */
+  shareUrl: string;
+  /** `true` when the trip is a request from a family, `false` for an offer. */
+  isRequest?: boolean;
   /** Show as a prominent row (e.g. inside the new-trip banner) or compact sidebar variant */
   variant?: 'banner' | 'sidebar';
   className?: string | undefined;
 }
 
 export function TripShareButtons({
-  tripId,
+  tripId: _tripId,
   route,
+  shareUrl,
+  isRequest = false,
   variant = 'sidebar',
   className,
 }: TripShareButtonsProps) {
   const [copied, setCopied] = useState(false);
 
-  const siteUrl =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/trip/${tripId}`
-      : `https://getsaathi.com/trip/${tripId}`;
-
   const routeStr = route.join(' → ');
   const whatsappText = encodeURIComponent(
-    `I'm helping someone on the ${routeStr} flight. Find the details on Saathi: ${siteUrl}`,
+    isRequest
+      ? `A family is looking for a travel companion on ${routeStr}. If anyone in your network is flying this, please pass it along: ${shareUrl}`
+      : `I'm flying ${routeStr} and offering to help anyone on the same flight who needs company. Details on Saathi: ${shareUrl}`,
   );
-  const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(siteUrl)}`;
+  const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
   const whatsappUrl = `https://wa.me/?text=${whatsappText}`;
 
   function copyLink() {
-    void navigator.clipboard.writeText(siteUrl).then(() => {
+    void navigator.clipboard.writeText(shareUrl).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

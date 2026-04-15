@@ -54,9 +54,12 @@ export function PostWizard({
     help_categories: defaults?.help_categories ?? [],
     thank_you_eur: defaults?.thank_you_eur ?? (kind === 'request' ? 15 : null),
     notes: defaults?.notes ?? '',
-    elderly_first_name: defaults?.elderly_first_name ?? '',
-    elderly_age_band: defaults?.elderly_age_band ?? null,
-    elderly_medical_notes: defaults?.elderly_medical_notes ?? '',
+    // For a request trip we seed ONE empty elder block so users see the
+    // parent form immediately. They can add more via the "Add another"
+    // button, or remove this one back down to zero.
+    elders:
+      defaults?.elders ??
+      (kind === 'request' ? [{ first_name: '', age_band: null, medical_notes: '' }] : []),
   });
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -378,7 +381,7 @@ export function PostWizard({
       <section className="space-y-2">
         <div>
           <h2 className="font-serif text-lg">
-            {isRequest ? 'Languages the parent speaks' : 'Languages you speak'}
+            {isRequest ? 'Languages they speak' : 'Languages you speak'}
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             We rank matches by language first. Be honest — only ones you can hold a conversation in.
@@ -388,7 +391,7 @@ export function PostWizard({
           options={LANGUAGES}
           selected={state.languages}
           onChange={(next) => setState((s) => ({ ...s, languages: next }))}
-          placeholder={isRequest ? 'Pick the parent’s languages…' : 'Pick your languages…'}
+          placeholder={isRequest ? 'Pick their languages…' : 'Pick your languages…'}
         />
       </section>
 
@@ -431,66 +434,130 @@ export function PostWizard({
         </div>
       </section>
 
-      {/* ─── 6. Parent details (request flow only) ──────────────────────── */}
+      {/* ─── 6. Loved-one details (request flow only) ───────────────────── */}
       {isRequest ? (
         <section className="space-y-3">
           <div>
-            <h2 className="font-serif text-lg">About the parent</h2>
+            <h2 className="font-serif text-lg">
+              {state.elders.length > 1 ? 'About your loved ones' : 'About your loved one'}
+            </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Only the age band is public. The first name and medical notes stay private until the
-              request is accepted.
+              This could be a parent, a spouse, a sibling — whoever you&rsquo;re sending. Only age
+              bands are public. Names and medical notes stay private until the request is accepted.
+              Add more if they&rsquo;re travelling together.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1">
-              <Label htmlFor="elderly_first_name" className="text-xs">
-                First name
-              </Label>
-              <Input
-                id="elderly_first_name"
-                value={state.elderly_first_name ?? ''}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setState((prev) => ({ ...prev, elderly_first_name: value }));
-                }}
-                placeholder="Shanta"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="elderly_age_band" className="text-xs">
-                Age band
-              </Label>
-              <select
-                id="elderly_age_band"
-                value={state.elderly_age_band ?? ''}
-                onChange={(e) => {
-                  const value = (e.target.value || null) as TripInput['elderly_age_band'];
-                  setState((prev) => ({ ...prev, elderly_age_band: value }));
-                }}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+
+          <ul className="space-y-3">
+            {state.elders.map((elder, i) => (
+              <li
+                key={i}
+                className="relative space-y-3 rounded-2xl border border-oat bg-cream/40 p-4"
               >
-                <option value="">Pick a band</option>
-                <option value="60-70">60–70</option>
-                <option value="70-80">70–80</option>
-                <option value="80+">80+</option>
-              </select>
-            </div>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="elderly_medical_notes" className="text-xs">
-              Medical notes (private)
-            </Label>
-            <Textarea
-              id="elderly_medical_notes"
-              rows={3}
-              value={state.elderly_medical_notes ?? ''}
-              onChange={(e) => {
-                const value = e.target.value;
-                setState((prev) => ({ ...prev, elderly_medical_notes: value }));
-              }}
-              placeholder="Diabetic; meds at mealtimes. Walks slowly but doesn't need a wheelchair."
-            />
-          </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Traveller {i + 1}
+                  </span>
+                  {state.elders.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setState((prev) => ({
+                          ...prev,
+                          elders: prev.elders.filter((_, idx) => idx !== i),
+                        }))
+                      }
+                      aria-label={`Remove traveller ${i + 1}`}
+                      className="rounded-full p-1 text-muted-foreground hover:bg-oat hover:text-destructive"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor={`elder-name-${i}`} className="text-xs">
+                      First name
+                    </Label>
+                    <Input
+                      id={`elder-name-${i}`}
+                      value={elder.first_name ?? ''}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setState((prev) => {
+                          const next = [...prev.elders];
+                          next[i] = { ...next[i]!, first_name: value };
+                          return { ...prev, elders: next };
+                        });
+                      }}
+                      placeholder={i === 0 ? 'Shanta' : 'Arun'}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`elder-age-${i}`} className="text-xs">
+                      Age band
+                    </Label>
+                    <select
+                      id={`elder-age-${i}`}
+                      value={elder.age_band ?? ''}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const value = (raw || null) as '60-70' | '70-80' | '80+' | null;
+                        setState((prev) => {
+                          const next = [...prev.elders];
+                          next[i] = { ...next[i]!, age_band: value };
+                          return { ...prev, elders: next };
+                        });
+                      }}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Pick a band</option>
+                      <option value="60-70">60–70</option>
+                      <option value="70-80">70–80</option>
+                      <option value="80+">80+</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`elder-notes-${i}`} className="text-xs">
+                    Medical notes (private)
+                  </Label>
+                  <Textarea
+                    id={`elder-notes-${i}`}
+                    rows={2}
+                    value={elder.medical_notes ?? ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setState((prev) => {
+                        const next = [...prev.elders];
+                        next[i] = { ...next[i]!, medical_notes: value };
+                        return { ...prev, elders: next };
+                      });
+                    }}
+                    placeholder="Diabetic; meds at mealtimes. Walks slowly but doesn't need a wheelchair."
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          {state.elders.length < 4 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setState((prev) => ({
+                  ...prev,
+                  elders: [...prev.elders, { first_name: '', age_band: null, medical_notes: '' }],
+                }))
+              }
+              className="gap-1.5"
+            >
+              <Plus className="size-3.5" />
+              Add another traveller
+            </Button>
+          )}
         </section>
       ) : null}
 
@@ -546,13 +613,16 @@ export function PostWizard({
       {/* ─── Submit ─────────────────────────────────────────────────────── */}
       <div className="flex flex-col-reverse items-stretch gap-3 border-t border-oat pt-5 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-muted-foreground">
-          Posting makes your offer visible to families.
+          {isRequest
+            ? 'Posting makes your request visible to travellers on the same route.'
+            : 'Posting makes your offer visible to families.'}
         </p>
         <Button
           size="lg"
           type="submit"
+          variant={isRequest ? 'slushie' : 'lemon'}
           disabled={pending}
-          className="gap-2 bg-matcha-600 px-6 text-white hover:bg-matcha-800"
+          className="gap-2 px-6"
         >
           {pending ? (
             'Posting…'

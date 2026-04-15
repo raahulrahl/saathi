@@ -50,10 +50,6 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       id: string;
       route: string[];
       travel_date: string;
-      elderly_first_name: string | null;
-      elderly_age_band: string | null;
-      elderly_photo_url: string | null;
-      elderly_medical_notes: string | null;
       airline: string | null;
       languages: string[];
       notes: string | null;
@@ -72,6 +68,17 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
 
   const youArePoster = userId === m.poster.id;
   const other = youArePoster ? m.requester : m.poster;
+
+  // Fetch elders for this trip. Visible once matched (RLS: trip owner and
+  // the accepted requester are the only authenticated users who can read
+  // these rows — enforced at the DB layer via the 0013 migration's policy
+  // plus the match_requests status='accepted' join).
+  const { data: elders } = await supabase
+    .from('trip_elders')
+    .select('id, first_name, age_band, medical_notes, sort_order')
+    .eq('trip_id', m.trip.id)
+    .order('sort_order', { ascending: true });
+  const elderList = elders ?? [];
 
   // Fetch the other person's primary language separately — profile_languages
   // is normalised post-0011 and PostgREST embeds from `profiles` would need
@@ -118,23 +125,32 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
             </CardContent>
           </Card>
 
-          {m.trip.elderly_first_name || m.trip.elderly_age_band || m.trip.elderly_medical_notes ? (
+          {elderList.length > 0 ? (
             <Card>
-              <CardContent className="space-y-2 p-5">
-                <h2 className="font-serif text-lg">About the parent</h2>
-                {m.trip.elderly_first_name ? (
-                  <div className="text-sm">
-                    Name: <b>{m.trip.elderly_first_name}</b>
-                  </div>
-                ) : null}
-                {m.trip.elderly_age_band ? (
-                  <div className="text-sm">Age band: {m.trip.elderly_age_band}</div>
-                ) : null}
-                {m.trip.elderly_medical_notes ? (
-                  <div className="text-sm text-muted-foreground">
-                    Medical notes: {m.trip.elderly_medical_notes}
-                  </div>
-                ) : null}
+              <CardContent className="space-y-4 p-5">
+                <h2 className="font-serif text-lg">
+                  {elderList.length === 1 ? 'About the traveller' : 'About the travellers'}
+                </h2>
+                <ul className="space-y-3">
+                  {elderList.map((e, i) => (
+                    <li
+                      key={e.id}
+                      className={i > 0 ? 'border-t border-dashed border-oat pt-3' : ''}
+                    >
+                      {e.first_name ? (
+                        <div className="text-sm">
+                          Name: <b>{e.first_name}</b>
+                        </div>
+                      ) : null}
+                      {e.age_band ? <div className="text-sm">Age band: {e.age_band}</div> : null}
+                      {e.medical_notes ? (
+                        <div className="text-sm text-muted-foreground">
+                          Medical notes: {e.medical_notes}
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
               </CardContent>
             </Card>
           ) : null}

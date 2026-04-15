@@ -1,13 +1,10 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { Inbox, Pencil, Plus, Send, Users } from 'lucide-react';
+import { Pencil, Plus, Send, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EmptyState } from '@/components/empty-state';
-import {
-  IncomingRequestCard,
-  type IncomingRequest,
-} from '@/components/dashboard/incoming-request-card';
+import { type IncomingRequest } from '@/components/dashboard/incoming-request-card';
 import { MyTripCard, type MyTrip } from '@/components/dashboard/my-trip-card';
 import { SentRequestCard, type SentRequest } from '@/components/dashboard/sent-request-card';
 import { MatchCard, type DashboardMatch } from '@/components/dashboard/match-card';
@@ -24,25 +21,26 @@ interface DashboardPageProps {
 }
 
 /**
- * Dashboard home: four tabs over the signed-in user's trip data
- *   - Incoming: pending match_requests for trips they posted
- *   - My trips: trips they posted (any status)
- *   - Sent: match_requests they sent to other people's trips
- *   - Matches: accepted pairings
+ * Dashboard home: three tabs — My trips (default), Sent, Matches.
  *
- * All card rendering is delegated to components under
- * `components/dashboard/*` so this file can stay at the top of the
- * routing + data-fetching stack and not grow into a 300-line god-file.
+ * Incoming requests used to live in their own tab but that meant
+ * returning users landed on an empty orphan list. Now each incoming
+ * request is rendered INLINE on its parent trip card in "My trips",
+ * so the user sees "this flight has 2 people hoping to join" without
+ * needing to switch context.
+ *
+ * The top of the page carries a warm greeting and a one-line stats
+ * strip so the user gets the full picture at a glance before any
+ * tab selection.
  */
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const supabase = await createSupabaseServerClient();
   const uid = await requireUserId('/dashboard');
   const { welcome } = await searchParams;
-  // Show the "profile saved" banner on first dashboard arrival from the
-  // onboarding redirect. Drops out after the user navigates anywhere else.
   const showWelcomeBanner = welcome === '1';
 
-  const [myTrips, incoming, outgoing, matches] = await Promise.all([
+  const [profileRes, myTrips, incoming, outgoing, matches] = await Promise.all([
+    supabase.from('public_profiles').select('display_name').eq('id', uid).maybeSingle(),
     supabase
       .from('trips')
       .select('id, kind, route, travel_date, status, airline')
@@ -77,45 +75,76 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       .order('created_at', { ascending: false }),
   ]);
 
-  // Supabase's select() returns its best-effort inferred type which
-  // doesn't always match the joined shape. We know the shape from the
-  // select() strings above; the unknown-cast is the idiomatic escape
-  // hatch until we regenerate types from the schema.
   const incomingRows = (incoming.data ?? []) as unknown as IncomingRequest[];
   const myTripRows = (myTrips.data ?? []) as unknown as MyTrip[];
   const outgoingRows = (outgoing.data ?? []) as unknown as SentRequest[];
   const matchRows = (matches.data ?? []) as unknown as DashboardMatch[];
 
+  // Group incoming requests by trip_id so MyTripCard can render them inline.
+  const incomingByTripId = new Map<string, IncomingRequest[]>();
+  for (const r of incomingRows) {
+    const list = incomingByTripId.get(r.trip.id) ?? [];
+    list.push(r);
+    incomingByTripId.set(r.trip.id, list);
+  }
+
+  const firstName = profileRes.data?.display_name?.split(' ')[0] ?? null;
+  const hasAnyData = myTripRows.length > 0 || outgoingRows.length > 0 || matchRows.length > 0;
+
   return (
     <div className="container max-w-5xl py-10">
       {showWelcomeBanner ? <WelcomeBanner /> : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-serif text-3xl">Dashboard</h1>
+      {/* ── Header: warm greeting + action buttons ──────────────────── */}
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="clay-label">Your dashboard</p>
+          <h1 className="mt-1 font-serif text-3xl md:text-4xl">
+            {firstName ? `Hello, ${firstName}.` : 'Hello.'}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {hasAnyData
+              ? 'Here’s what’s happening across your Saathi trips.'
+              : 'Post your first trip — a family is waiting for someone like you.'}
+          </p>
+        </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="ghost" size="sm">
+          <Button asChild variant="outline">
             <Link href="/onboarding?edit=1">
-              <Pencil className="mr-1 size-3.5" /> Edit profile
+              <Pencil className="mr-1 size-4" /> Edit profile
             </Link>
           </Button>
-          <Button asChild variant="outline">
-            <Link href="/post/offer">
+          <Button asChild variant="lemon">
+            <Link href="/dashboard/new/offer">
               <Plus className="mr-1 size-4" /> New offer
             </Link>
           </Button>
-          <Button asChild>
-            <Link href="/post/request">
+          <Button asChild variant="slushie">
+            <Link href="/dashboard/new/request">
               <Plus className="mr-1 size-4" /> New request
             </Link>
           </Button>
         </div>
-      </div>
+      </header>
 
-      <Tabs defaultValue="incoming" className="mt-8">
+      {/* ── Stats strip ────────────────────────────────────────────── */}
+      {hasAnyData && (
+        <div className="mt-6 grid grid-cols-2 gap-3 rounded-2xl border border-oat bg-card p-4 sm:grid-cols-4">
+          <StatItem
+            label="Active trips"
+            value={
+              myTripRows.filter((t) => t.status !== 'completed' && t.status !== 'cancelled').length
+            }
+          />
+          <StatItem label="Hoping to join" value={incomingRows.length} emphasis />
+          <StatItem label="Requests sent" value={outgoingRows.length} />
+          <StatItem label="Matches" value={matchRows.length} />
+        </div>
+      )}
+
+      {/* ── Tabs — My trips is primary, default, contains incoming inline ── */}
+      <Tabs defaultValue="trips" className="mt-8">
         <TabsList>
-          <TabsTrigger value="incoming">
-            <Inbox className="mr-1 size-4" /> Incoming ({incomingRows.length})
-          </TabsTrigger>
           <TabsTrigger value="trips">My trips ({myTripRows.length})</TabsTrigger>
           <TabsTrigger value="sent">
             <Send className="mr-1 size-4" /> Sent ({outgoingRows.length})
@@ -125,28 +154,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="incoming" className="mt-6 space-y-4">
-          {incomingRows.length === 0 ? (
-            <EmptyState
-              title="No incoming requests yet"
-              description="When someone sends a request for one of your trips, it appears here."
-            />
-          ) : (
-            incomingRows.map((r) => <IncomingRequestCard key={r.id} request={r} />)
-          )}
-        </TabsContent>
-
         <TabsContent value="trips" className="mt-6 space-y-4">
           {myTripRows.length === 0 ? (
-            <EmptyState
-              title="No trips posted yet"
-              description="Post a request if you're a family member, or an offer if you're flying a route."
-              cta="Post a trip"
-              href="/post/request"
-              icon={Plus}
-            />
+            <FirstTripEmptyState />
           ) : (
-            myTripRows.map((t) => <MyTripCard key={t.id} trip={t} />)
+            myTripRows.map((t) => (
+              <MyTripCard key={t.id} trip={t} incoming={incomingByTripId.get(t.id) ?? []} />
+            ))
           )}
         </TabsContent>
 
@@ -156,7 +170,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               title="You haven't sent any requests yet"
               description="Browse open trips and send a request when you find a good match."
               cta="Browse trips"
-              href="/search"
+              href="/browse"
             />
           ) : (
             outgoingRows.map((r) => <SentRequestCard key={r.id} request={r} />)
@@ -166,7 +180,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <TabsContent value="matches" className="mt-6 space-y-4">
           {matchRows.length === 0 ? (
             <EmptyState
-              title="No active matches"
+              title="No matches yet"
               description="When a request is accepted, your match thread appears here."
             />
           ) : (
@@ -178,10 +192,65 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   );
 }
 
+// ── Stats atom ──────────────────────────────────────────────────────
+
+function StatItem({
+  label,
+  value,
+  emphasis,
+}: {
+  label: string;
+  value: number;
+  emphasis?: boolean;
+}) {
+  return (
+    <div className="space-y-0.5">
+      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={`font-serif text-2xl ${
+          emphasis && value > 0 ? 'text-marigold-700' : 'text-foreground'
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+// ── First-trip empty state ─────────────────────────────────────────
+
+function FirstTripEmptyState() {
+  return (
+    <div className="rounded-3xl border border-dashed border-oat bg-gradient-to-b from-cream to-oat-light/30 p-10 text-center">
+      <div className="mb-3 text-4xl" aria-hidden>
+        🌼
+      </div>
+      <h2 className="font-serif text-xl">Your Saathi is ready.</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+        Flying somewhere? Post an offer so a family can find you. Sending a loved one alone? Post a
+        request so someone on their flight can keep them company.
+      </p>
+      <div className="mt-5 flex flex-wrap justify-center gap-2">
+        <Button asChild variant="lemon">
+          <Link href="/dashboard/new/offer">
+            <Plus className="mr-1 size-4" /> Offer to help
+          </Link>
+        </Button>
+        <Button asChild variant="slushie">
+          <Link href="/dashboard/new/request">
+            <Plus className="mr-1 size-4" /> Post a request
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Matcha-tinted banner shown once at the top of the dashboard after a
- * successful onboarding save. Not a component that needs reuse — kept
- * inline since it's tied specifically to this page's welcome flow.
+ * successful onboarding save.
  */
 function WelcomeBanner() {
   return (
@@ -194,7 +263,7 @@ function WelcomeBanner() {
           Profile saved — welcome to Saathi.
         </p>
         <p className="text-sm text-warm-charcoal">
-          Post a request if you&rsquo;re sending a parent, or an offer if you&rsquo;re flying a
+          Post a request if you&rsquo;re sending a loved one, or an offer if you&rsquo;re flying a
           route and open to helping. You can edit your profile from the button up here.
         </p>
       </div>

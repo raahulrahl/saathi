@@ -19,7 +19,10 @@ export interface TripCardData {
   primary_language: string | null;
   route: string[];
   travel_date: string;
-  elderly_age_band?: string | null;
+  /** Age bands for every elderly person on a request trip, in sort order. */
+  elder_age_bands?: string[];
+  /** Total elder count (0 for offers). */
+  elder_count?: number;
   help_categories?: string[];
   thank_you_eur?: number | null;
   airline?: string | null;
@@ -76,11 +79,16 @@ export function TripCard({ data, viewerLanguages = [], scored, className }: Trip
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {isRequest ? 'Family member' : 'Companion'}
-                  {isRequest && data.elderly_age_band ? ` · Parent ${data.elderly_age_band}` : null}
+                  {isRequest && data.elder_count && data.elder_count > 0
+                    ? ` · ${data.elder_count === 1 ? '1 traveller' : `${data.elder_count} travellers`}` +
+                      (data.elder_age_bands && data.elder_age_bands.length > 0
+                        ? ` (${data.elder_age_bands.join(', ')})`
+                        : '')
+                    : null}
                 </div>
               </div>
             </div>
-            <Badge variant={isRequest ? 'secondary' : 'default'} className="shrink-0">
+            <Badge variant={isRequest ? 'slushie' : 'lemon'} className="shrink-0">
               {isRequest ? 'Looking for help' : 'Offering help'}
             </Badge>
           </div>

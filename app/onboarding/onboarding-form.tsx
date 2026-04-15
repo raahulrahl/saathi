@@ -421,8 +421,10 @@ function Step1({
                 : 'border-oat bg-white hover:bg-oat-light',
             )}
           >
-            <span className="font-medium">Sending a family member</span>
-            <span className="text-xs text-warm-charcoal">On behalf of a parent or relative</span>
+            <span className="font-medium">Sending a loved one</span>
+            <span className="text-xs text-warm-charcoal">
+              On behalf of a parent, spouse, sibling, or friend
+            </span>
           </button>
           <button
             type="button"
@@ -471,7 +473,7 @@ function Step2({
   whatsappVerified: boolean;
   onVerified: () => void;
 }) {
-  const langLabel = role === 'family' ? "Your parent's languages" : 'Languages you can help in';
+  const langLabel = role === 'family' ? "Your loved one's languages" : 'Languages you can help in';
 
   return (
     <>

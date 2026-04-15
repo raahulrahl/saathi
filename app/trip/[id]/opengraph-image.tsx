@@ -53,7 +53,10 @@ export default async function TripOgImage({ params }: Props) {
         : trip.notes
       : null;
 
-  // Fetch profile photo as data URL for edge rendering
+  // Fetch profile photo and inline as data URL. Satori (the engine next/og
+  // uses) handles HTTPS URLs, but the data-URL path is more reliable when
+  // the upstream has CORS or content-disposition quirks. Failures fall
+  // back to initials — we log so the fallback isn't invisible.
   let photoData: string | null = null;
   if (photoUrl) {
     try {
@@ -62,10 +65,15 @@ export default async function TripOgImage({ params }: Props) {
         const buf = await res.arrayBuffer();
         const mime = res.headers.get('content-type') ?? 'image/jpeg';
         photoData = `data:${mime};base64,${Buffer.from(buf).toString('base64')}`;
+        console.log(`[trip-og] photo loaded for ${displayName} (${buf.byteLength} bytes, ${mime})`);
+      } else {
+        console.warn(`[trip-og] photo fetch ${res.status} for ${photoUrl}`);
       }
-    } catch {
-      // silently skip — we'll show initials instead
+    } catch (err) {
+      console.warn('[trip-og] photo fetch threw:', err);
     }
+  } else {
+    console.log(`[trip-og] no photo_url on profile for ${displayName} (trip=${id})`);
   }
 
   const initials = displayName
