@@ -89,7 +89,7 @@ export default function AboutPage() {
           <Card key={name}>
             <CardContent className="space-y-2 p-5">
               <div className="flex items-center gap-2">
-                <Icon className="size-5 text-saffron-600" aria-hidden />
+                <Icon className="text-saffron-600 size-5" aria-hidden />
                 <h3 className="font-serif text-lg">{name}</h3>
               </div>
               <p className="text-sm text-muted-foreground">{body}</p>
