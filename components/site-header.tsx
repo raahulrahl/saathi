@@ -17,6 +17,9 @@ export async function SiteHeader() {
     <header className="sticky top-0 z-40 w-full border-b border-oat bg-background/85 backdrop-blur">
       <div className="container flex h-16 items-center justify-between gap-4">
         <Link href="/" className="flex items-baseline gap-2">
+          <span className="text-2xl leading-none" aria-hidden>
+            🌼
+          </span>
           <span className="font-display text-2xl font-semibold tracking-tight">Saathi</span>
           <span className="clay-label hidden sm:inline">साथी</span>
         </Link>

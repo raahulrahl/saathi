@@ -36,28 +36,13 @@ export default async function OpengraphImage() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 16,
+          gap: 14,
           color: '#2e241c',
-          fontSize: 36,
+          fontSize: 44,
           fontWeight: 600,
         }}
       >
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            background: '#2e241c',
-            color: '#f59e0b',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 12,
-            fontSize: 36,
-            fontWeight: 700,
-          }}
-        >
-          S
-        </div>
+        <span style={{ fontSize: 60, display: 'flex' }}>🌼</span>
         Saathi
       </div>
       <div
@@ -104,6 +89,6 @@ export default async function OpengraphImage() {
         <span style={{ color: '#b45309', fontWeight: 600 }}>getsaathi.com</span>
       </div>
     </div>,
-    { ...size },
+    { ...size, emoji: 'twemoji' },
   );
 }
