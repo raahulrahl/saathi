@@ -41,18 +41,16 @@ max_frequency = "1s"
 enable_signup = false
 enable_confirmations = false
 
-# OAuth providers — enabled per spec §8
-[auth.external.google]
-enabled = true
-client_id = "env(AUTH_GOOGLE_CLIENT_ID)"
-secret = "env(AUTH_GOOGLE_SECRET)"
-
-[auth.external.linkedin_oidc]
-enabled = true
-client_id = "env(AUTH_LINKEDIN_CLIENT_ID)"
-secret = "env(AUTH_LINKEDIN_SECRET)"
-
-[auth.external.twitter]
-enabled = true
-client_id = "env(AUTH_TWITTER_CLIENT_ID)"
-secret = "env(AUTH_TWITTER_SECRET)"
+# OAuth providers intentionally omitted.
+#
+# Saathi uses Clerk for all authentication (see migration 0005_clerk.sql
+# and middleware.ts). Supabase's built-in auth — including external OAuth
+# providers like Google / LinkedIn / Twitter — is not exercised at all.
+#
+# The previous [auth.external.*] blocks referenced env(AUTH_GOOGLE_CLIENT_ID)
+# etc., which broke `supabase db push` whenever those envs weren't set
+# (which is always — they're Supabase-Auth-only variables that don't exist
+# in .env.example because we don't use Supabase Auth).
+#
+# If you ever switch off Clerk, re-enable these by adding [auth.external.X]
+# blocks and setting the env vars.
