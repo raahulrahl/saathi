@@ -16,7 +16,7 @@ jobs:
       # ERR_PNPM_BAD_PM_VERSION — keep package.json as the single source
       # of truth and bump it there when the time comes.
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
