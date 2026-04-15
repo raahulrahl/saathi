@@ -152,7 +152,7 @@ export default async function LandingPage() {
 
         <div className="container mt-4 text-center">
           <p className="text-xs text-warm-silver">
-            Examples for now — real people appear here as they join.{' '}
+            Examples for now: real people appear here as they join.{' '}
             <Link href="/search" className="text-marigold-700 underline-offset-4 hover:underline">
               See everyone →
             </Link>
