@@ -1,4 +1,19 @@
-/** Languages offered in the post wizard. Curated, not exhaustive. */
+/**
+ * Shared language and help-category vocabulary.
+ *
+ * LANGUAGES is the single source of truth for "languages you speak"
+ * anywhere in the app — onboarding form, post wizard, search filters.
+ * Curated, not exhaustive: we list the ~35 languages most likely to
+ * matter for the families and companions we're matching. When in doubt,
+ * add a language here rather than in the consumer.
+ *
+ * HELP_CATEGORIES drives the checkbox grid on the post wizard's
+ * "what help does Ma need" step. Each entry carries a stable `key` for
+ * storage (never change these — they're in the `trips.help_categories`
+ * array in the DB) plus human-readable label + description.
+ */
+
+/** Languages offered in onboarding + post wizard. Curated, not exhaustive. */
 export const LANGUAGES: readonly string[] = [
   'English',
   'Bengali',

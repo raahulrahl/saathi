@@ -1,5 +1,10 @@
 'use server';
 
+/**
+ * Dashboard server actions. Single responsibility for now — accepting or
+ * declining incoming match_requests from the "Incoming" tab.
+ */
+
 import { auth } from '@clerk/nextjs/server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -11,9 +16,22 @@ const Input = z.object({
 });
 
 /**
- * Flips match_requests.status. The trigger in 0003 handles the rest:
- * creates the match row, auto-declines sibling requests, and moves the trip
- * to 'matched'. RLS ensures only the trip owner can perform the update.
+ * Flip match_requests.status for an incoming request. The heavy lifting
+ * happens in a Postgres trigger (see 0005_clerk.sql — the
+ * handle_match_request_accepted function):
+ *
+ *   - On 'accepted': inserts a row into matches, auto-declines every
+ *     other pending request on the same trip, and flips the trip to
+ *     status='matched'.
+ *   - On 'declined': stamps responded_at only.
+ *
+ * RLS on match_requests enforces that only the TRIP OWNER (not the
+ * requester) can run this update — see the "match_requests: trip owner
+ * responds" policy.
+ *
+ * Returns a discriminated-union result for the client to render inline
+ * feedback. Revalidates /dashboard so the card disappears from the
+ * Incoming tab after the response.
  */
 export async function respondToMatchRequestAction(input: z.infer<typeof Input>) {
   const parsed = Input.safeParse(input);

@@ -1,3 +1,24 @@
+/**
+ * POST /api/verify/whatsapp/check
+ *
+ * Companion to /start — validates the OTP the user typed back after
+ * receiving it on WhatsApp. On success, stamps whatsapp_validated_at
+ * on the user's profile so the UI can show the "verified" badge.
+ *
+ * Rate-limited separately from /start because this is the brute-force
+ * surface: 6-digit OTP = 1M combinations, 4-digit = 10k. Twilio Verify
+ * has its own cooldown but we want to short-circuit before Twilio ever
+ * sees the bad attempt (cheaper + catches distributed brute force
+ * across multiple phone numbers).
+ *
+ * Responses:
+ *   200 { ok: true }                — code matched, profile stamped
+ *   400 { ok: false, error: string } — bad input OR wrong code OR expired code
+ *   401 { ok: false, error: string } — not signed in
+ *   429 { ok: false, error: string } — rate limited
+ *   500 { ok: false, error: string } — DB write failed
+ */
+
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';

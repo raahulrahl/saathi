@@ -1,3 +1,25 @@
+/**
+ * POST /api/verify/whatsapp/start
+ *
+ * Kicks off Twilio Verify for a WhatsApp number — Twilio sends a 6-digit
+ * OTP to the phone on WhatsApp. Called from the inline
+ * <WhatsAppOtpVerify> widget on the onboarding form. The companion
+ * endpoint /api/verify/whatsapp/check validates the code the user types
+ * back and stamps whatsapp_validated_at on their profile.
+ *
+ * Protection:
+ *   - Clerk auth required (middleware enforces this for /api/verify/**)
+ *   - Dual rate limit (per-user + per-IP) via Upstash; see lib/rate-limit
+ *   - E.164 format check before hitting Twilio (saves a round trip)
+ *
+ * Responses:
+ *   200 { ok: true }               — OTP sent successfully
+ *   400 { ok: false, error: string} — malformed phone or body
+ *   401 { ok: false, error: string} — not signed in
+ *   429 { ok: false, error: string} — rate limited (headers: Retry-After, X-RateLimit-*)
+ *   502 { ok: false, error: string} — Twilio refused the send (rare: bad cred, number blocked)
+ */
+
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';

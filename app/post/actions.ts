@@ -1,5 +1,12 @@
 'use server';
 
+/**
+ * Server action for creating a new trip row — used by both /post/request
+ * (family-posting flow) and /post/offer (companion-posting flow) via the
+ * shared PostWizard. Writes through the Clerk-aware Supabase client so
+ * RLS enforces owner-only inserts.
+ */
+
 import { auth } from '@clerk/nextjs/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -8,6 +15,17 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isValidIata } from '@/lib/iata';
 import { moderateText } from '@/lib/moderation';
 
+/**
+ * Wire-shape for createTripAction. Matches the form state from
+ * PostWizard plus a few server-only fields (elderly_medical_notes) that
+ * need to round-trip through the schema validator.
+ *
+ * superRefine adds two cross-field checks that can't be expressed with
+ * a single zod rule:
+ *   - every airport in `route` must be a plausible IATA code
+ *   - no airport may appear twice (a layover that matches origin or
+ *     destination is obviously wrong)
+ */
 const TripSchema = z
   .object({
     kind: z.enum(['request', 'offer']),
@@ -43,6 +61,20 @@ const TripSchema = z
 
 export type TripInput = z.infer<typeof TripSchema>;
 
+/**
+ * Validate the posted trip, run OpenAI moderation on the free-text
+ * `notes` field, insert the row, and redirect the caller to the
+ * public trip page.
+ *
+ * Returns a discriminated-union result when input is rejected — the
+ * form surfaces the error string to the user. On success the function
+ * doesn't return (the redirect() throws an error Next.js intercepts).
+ *
+ * Elderly fields (first_name, age_band, medical_notes) are stripped
+ * server-side unless kind === 'request' — this prevents a malicious
+ * companion from stuffing in fake elderly metadata. Thank-you amount
+ * is likewise only stored on request trips.
+ */
 export async function createTripAction(input: TripInput) {
   const parsed = TripSchema.safeParse(input);
   if (!parsed.success) {
