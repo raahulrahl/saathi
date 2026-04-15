@@ -25,17 +25,20 @@ type Verif = {
 
 // Mirrors app/api/clerk-webhook/route.ts — only LinkedIn and X are enabled
 // providers. Google and GitHub are deliberately off (product decision).
+//
+// Matches by substring rather than exact string: Clerk has varied the
+// provider slug across versions ('oauth_linkedin_oidc', 'linkedin_oidc',
+// 'Linkedin_oidc' — the casing we literally saw in a user error) and a
+// strict switch silently dropped verified accounts on the floor when the
+// slug didn't match any case. Substring match is resilient to any of
+// these variants and still won't false-positive into Google/GitHub.
 function providerToChannel(provider: string): string | null {
-  switch (provider) {
-    case 'oauth_linkedin_oidc':
-    case 'oauth_linkedin':
-      return 'linkedin';
-    case 'oauth_x':
-    case 'oauth_twitter':
-      return 'twitter';
-    default:
-      return null;
+  const p = provider.toLowerCase();
+  if (p.includes('linkedin')) return 'linkedin';
+  if (p.includes('twitter') || p === 'oauth_x' || p === 'x' || p.endsWith('_x')) {
+    return 'twitter';
   }
+  return null;
 }
 
 export async function syncClerkUserToSupabase(userId: string): Promise<void> {
@@ -43,6 +46,20 @@ export async function syncClerkUserToSupabase(userId: string): Promise<void> {
   if (!user || user.id !== userId) return;
 
   const supabase = createSupabaseServiceClient();
+
+  // Diagnostic log — surfaces in server terminal + Sentry breadcrumbs.
+  // Triggered once per authenticated page load, so volume is bounded.
+  // If a user complains "LinkedIn isn't showing as verified" we can see
+  // immediately whether Clerk is returning the external account and what
+  // provider string it came back with.
+  // eslint-disable-next-line no-console
+  console.info('[clerk-sync] user', user.id, {
+    externalAccountCount: user.externalAccounts?.length ?? 0,
+    providers: (user.externalAccounts ?? []).map((a) => ({
+      provider: a.provider,
+      status: a.verification?.status,
+    })),
+  });
 
   const primaryEmail =
     user.emailAddresses.find(

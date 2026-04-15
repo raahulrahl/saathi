@@ -46,25 +46,18 @@ type ClerkWebhookEvent =
 
 /**
  * Map Clerk's provider string to our verifications.channel enum.
- * Clerk providers: https://clerk.com/docs/authentication/social-connections/overview
- *
- * Only LinkedIn and X (Twitter) are enabled in Clerk for this app —
- * Google and GitHub are deliberately omitted (product decision: we
- * want trust signals rooted in real social/professional graphs, not
- * a Google login that every human on Earth already has). If either
- * is re-enabled in Clerk, add the case back here.
+ * Matches by substring: Clerk sends variants across versions
+ * ('oauth_linkedin_oidc', 'linkedin_oidc', 'Linkedin_oidc') and strict
+ * equality would silently drop any of them. See lib/clerk-sync.ts for
+ * the same mapping.
  */
 function providerToChannel(provider: string): string | null {
-  switch (provider) {
-    case 'oauth_linkedin_oidc':
-    case 'oauth_linkedin':
-      return 'linkedin';
-    case 'oauth_x':
-    case 'oauth_twitter':
-      return 'twitter';
-    default:
-      return null;
+  const p = provider.toLowerCase();
+  if (p.includes('linkedin')) return 'linkedin';
+  if (p.includes('twitter') || p === 'oauth_x' || p === 'x' || p.endsWith('_x')) {
+    return 'twitter';
   }
+  return null;
 }
 
 export async function POST(request: NextRequest) {
