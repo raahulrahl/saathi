@@ -13,9 +13,16 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 export const metadata: Metadata = { title: 'Match' };
 
 /**
- * Match thread. Chat, reviews, and photo upload are stubs per Product Spec
- * §11 ("Stub chat, reviews, and photo upload — those come next sprint.").
+ * `NEXT_PUBLIC_MATCH_FEATURES_ENABLED=true` unlocks the in-app chat,
+ * mark-complete buttons, reviews, and photo upload. Until the real UI for
+ * those ships, we render a single "match confirmed — full in-app experience
+ * ships next sprint" notice instead of three half-built cards. The trip
+ * details and who-you're-matched-with info are always shown either way —
+ * those parts work, and they're what the user actually needs to meet up.
+ *
+ * Default: off. Flip to on for staging / once chat + reviews are built.
  */
+const MATCH_FEATURES_ENABLED = process.env.NEXT_PUBLIC_MATCH_FEATURES_ENABLED === 'true';
 export default async function MatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
@@ -127,16 +134,39 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
             </Card>
           ) : null}
 
-          {/* STUB: chat. Next sprint — Supabase realtime on `messages`. */}
-          <Card>
-            <CardContent className="space-y-2 p-5">
-              <h2 className="font-serif text-lg">Chat</h2>
-              <p className="text-sm text-muted-foreground">
-                Realtime chat ships in the next sprint. For now, use the contact details in the
-                sidebar to set things up over WhatsApp or email.
-              </p>
-            </CardContent>
-          </Card>
+          {MATCH_FEATURES_ENABLED ? (
+            // STUB: real chat UI ships here once MATCH_FEATURES_ENABLED lands.
+            // Keeping an empty-ish card under the flag for when that work begins.
+            <Card>
+              <CardContent className="space-y-2 p-5">
+                <h2 className="font-serif text-lg">Chat</h2>
+                <p className="text-sm text-muted-foreground">Loading messages…</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-marigold-200/80 bg-marigold-50">
+              <CardContent className="space-y-3 p-5">
+                <h2 className="font-serif text-lg">We&rsquo;re still building this bit</h2>
+                <p className="text-sm leading-relaxed text-warm-charcoal">
+                  The in-app chat, mark-complete, review, and photo-upload flows are on the way —
+                  they&rsquo;re not live yet. For now, message{' '}
+                  <b>{other.full_name ?? other.display_name ?? 'them'}</b> directly using their
+                  linked accounts (you can see which platforms they&rsquo;ve verified on their{' '}
+                  <Link
+                    href={`/profile/${other.id}`}
+                    className="text-marigold-700 underline-offset-4 hover:underline"
+                  >
+                    profile
+                  </Link>
+                  ) and arrange the handover over WhatsApp or email.
+                </p>
+                <p className="text-sm leading-relaxed text-warm-charcoal">
+                  Once the trip is done, we&rsquo;ll open up reviews here. In the meantime, the
+                  match is confirmed — nothing else needs to happen on this page.
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <aside className="space-y-4">
@@ -153,31 +183,33 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
             </CardContent>
           </Card>
 
-          {/* STUB: completion flip + review */}
-          <Card>
-            <CardContent className="space-y-3 p-5">
-              <h2 className="font-serif text-lg">After the trip</h2>
-              <p className="text-sm text-muted-foreground">
-                Both parties mark the trip complete to unlock reviews. Auto-completion runs 48h
-                after travel date.
-              </p>
-              <div className="text-xs text-muted-foreground">
-                Your mark:{' '}
-                <b>
-                  {(youArePoster ? m.poster_marked_complete : m.requester_marked_complete)
-                    ? 'Complete'
-                    : 'Not yet'}
-                </b>
-                {' · '}
-                Their mark:{' '}
-                <b>
-                  {(youArePoster ? m.requester_marked_complete : m.poster_marked_complete)
-                    ? 'Complete'
-                    : 'Not yet'}
-                </b>
-              </div>
-            </CardContent>
-          </Card>
+          {MATCH_FEATURES_ENABLED ? (
+            // STUB: completion flip + review UI ships here.
+            <Card>
+              <CardContent className="space-y-3 p-5">
+                <h2 className="font-serif text-lg">After the trip</h2>
+                <p className="text-sm text-muted-foreground">
+                  Both parties mark the trip complete to unlock reviews. Auto-completion runs 48h
+                  after travel date.
+                </p>
+                <div className="text-xs text-muted-foreground">
+                  Your mark:{' '}
+                  <b>
+                    {(youArePoster ? m.poster_marked_complete : m.requester_marked_complete)
+                      ? 'Complete'
+                      : 'Not yet'}
+                  </b>
+                  {' · '}
+                  Their mark:{' '}
+                  <b>
+                    {(youArePoster ? m.requester_marked_complete : m.poster_marked_complete)
+                      ? 'Complete'
+                      : 'Not yet'}
+                  </b>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
         </aside>
       </div>
     </div>
