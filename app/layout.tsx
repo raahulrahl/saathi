@@ -5,6 +5,7 @@ import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
+import { siteUrl } from '@/lib/site';
 import './globals.css';
 
 // Analytics + Speed Insights are no-ops outside Vercel and gate themselves
@@ -38,11 +39,34 @@ export const metadata: Metadata = {
   },
   description:
     'Saathi pairs elderly travellers with solo travellers already flying the same route, so no parent has to navigate an unfamiliar airport alone.',
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://saathi.travel'),
+  applicationName: 'Saathi',
+  metadataBase: new URL(siteUrl()),
+  // Prevent search engines from de-duplicating www vs apex into the wrong
+  // canonical when crawling. Pages can still set their own alternate.
+  alternates: { canonical: '/' },
   openGraph: {
     type: 'website',
     siteName: 'Saathi',
+    locale: 'en_GB',
+    url: '/',
   },
+  // Twitter renders large_image cards when the OG image is 1200×630, which
+  // matches our default opengraph-image.tsx — no separate twitter-image
+  // needed unless we want a different crop.
+  twitter: {
+    card: 'summary_large_image',
+    creator: '@getsaathi',
+  },
+  // Authoritative crawler hint. Robots.ts handles the "what to skip"
+  // half; this is the per-page "yes do index this" half.
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, 'max-image-preview': 'large' },
+  },
+  // Tells crawlers + browsers what the site is about even when JS is
+  // off (RSS, etc. would slot in here later).
+  category: 'travel',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
