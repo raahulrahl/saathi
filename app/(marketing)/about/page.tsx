@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { Linkedin, MessageCircle, Twitter } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 export const metadata: Metadata = {
   title: 'About & Trust',
-  description: 'What Saathi is, why it exists, and how we keep families safe.',
+  description:
+    'Why Saathi exists, how two strangers become companions, and how we keep families safe.',
 };
 
 const CHANNELS = [
@@ -21,75 +24,88 @@ const CHANNELS = [
   {
     icon: MessageCircle,
     name: 'WhatsApp',
-    body: 'A one-time code on a working number. The lingua franca for Indian parents.',
+    body: 'A one-time code on a working number. The lingua franca for families back home.',
   },
 ];
 
 export default function AboutPage() {
   return (
     <article className="container max-w-3xl py-14">
-      {/* About */}
+      {/* ─── Chapter 1 — A specific scene ─────────────────────────────── */}
       <header>
-        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">About Saathi</p>
-        <h1 className="mt-2 font-serif text-4xl">A companion on the flight home.</h1>
-        <p className="mt-4 text-lg text-muted-foreground">
-          Every year, hundreds of thousands of first-generation immigrant families want to bring a
-          parent over from India, China, the Philippines, Nigeria. The blocker is rarely the visa or
-          the ticket. It&apos;s the flight itself.
-        </p>
+        <p className="clay-label">Our story</p>
+        <h1 className="mt-2 font-serif text-4xl md:text-5xl">It starts with a mother at a gate.</h1>
       </header>
 
-      <section className="mt-8 space-y-4">
+      <section className="mt-8 space-y-4 text-base leading-relaxed text-warm-charcoal">
         <p>
-          Most parents don&apos;t speak English, have never seen a self-service kiosk, can&apos;t
-          read the boarding signage, and panic at connecting flights. Today the workaround lives in
-          WhatsApp groups and Facebook posts:{' '}
-          <em>&ldquo;Anyone flying CCU → AMS via DOH on the 14th? My mother needs help.&rdquo;</em>
+          She&rsquo;s flown before — once, twice maybe — but it&rsquo;s been years. The announcement
+          is in Dutch and English. Neither is hers. The signs are small. The kiosk wants a QR code
+          she can&rsquo;t find. She&rsquo;s been travelling for fifteen hours and the next gate
+          doesn&rsquo;t exist on her boarding pass.
         </p>
-        <p>That&apos;s the entire product. Make that post a structured search.</p>
-      </section>
-
-      <section className="mt-10 space-y-3">
-        <h2 className="font-serif text-2xl">What we are</h2>
-        <p className="text-muted-foreground">
-          Saathi makes the introduction between two people who would have met on WhatsApp anyway.
-          Money moves between them directly — Revolut, UPI, cash at the gate, whatever they prefer.
-          We don&apos;t touch it. That keeps us out of payments licensing, out of disputes, and lets
-          us ship.
+        <p>
+          Somewhere in the terminal, a young woman heading back home to Amsterdam for the weekend is
+          scrolling her phone. She could help. They speak the same language. They&rsquo;re on the
+          same plane. They will never meet.
         </p>
       </section>
 
-      <section className="mt-10 space-y-3">
-        <h2 className="font-serif text-2xl">What we are not</h2>
-        <p className="text-muted-foreground">
-          Saathi isn&apos;t meet-and-assist-as-a-service. Professional airport assistance exists —
-          Schiphol charges €80–120 for it. Saathi is cheaper, but more importantly it&apos;s
-          cultural: someone who speaks your mother&apos;s language is worth more than a uniformed
-          assistant who doesn&apos;t.
+      {/* ─── Chapter 2 — The workaround ───────────────────────────────── */}
+      <section className="mt-14 space-y-4">
+        <h2 className="font-serif text-2xl md:text-3xl">
+          The workaround already exists. It lives in WhatsApp.
+        </h2>
+        <p className="text-warm-charcoal">
+          Every immigrant community runs one: a group chat, a Facebook post, a Reddit thread.
+        </p>
+        <blockquote className="border-l-4 border-marigold-400 bg-marigold-50 p-5 font-serif text-lg italic text-warm-charcoal">
+          &ldquo;Anyone flying CCU → AMS via Doha on the 17th? My mother is travelling alone. She
+          speaks Bengali and Hindi. Any company would help.&rdquo;
+        </blockquote>
+        <p className="text-warm-charcoal">
+          Someone answers. They exchange numbers. The mother flies with a companion. It works every
+          time it happens. The problem is that most of the time, <b>it doesn&rsquo;t happen</b>
+          &nbsp;— because the WhatsApp group is small, and the right person isn&rsquo;t in it.
         </p>
       </section>
 
-      {/* Trust & safety */}
-      <hr className="my-14 border-dashed" />
-
-      <header>
-        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-          Trust &amp; safety
+      {/* ─── Chapter 3 — What Saathi is ───────────────────────────────── */}
+      <section className="mt-14 space-y-4">
+        <h2 className="font-serif text-2xl md:text-3xl">Saathi is that post, made searchable.</h2>
+        <p className="text-warm-charcoal">
+          You fill in a short form — flight number, date, who&rsquo;s travelling, what kind of help
+          would be welcome. It goes live. Somewhere, a traveller on the same flight sees it. We
+          match on language first, flight number second, date third.
         </p>
-        <h2 className="mt-2 font-serif text-4xl">Verification, not paperwork.</h2>
-        <p className="mt-4 text-lg text-muted-foreground">
-          Saathi doesn&apos;t do passport uploads. Verification is <b>social-graph based</b>: every
-          user must connect at least two of LinkedIn, X, and WhatsApp before they can post a trip or
-          send a request.
+        <p className="text-warm-charcoal">
+          The match sends a short message. If accepted, contact details unlock — and then the two of
+          them arrange everything else on their own, over WhatsApp, the way it&rsquo;s always
+          worked.
         </p>
-      </header>
+        <p className="text-warm-charcoal">
+          Money, if any, moves between them directly — Revolut, UPI, cash at the gate. We
+          don&rsquo;t touch it. That keeps us out of payments licensing, out of disputes, and lets
+          us stay what we are: an introduction service.
+        </p>
+      </section>
 
-      <div className="mt-8 grid gap-4 md:grid-cols-2">
+      {/* ─── Chapter 4 — Trust ────────────────────────────────────────── */}
+      <section className="mt-14 space-y-4">
+        <h2 className="font-serif text-2xl md:text-3xl">Trust, without paperwork.</h2>
+        <p className="text-warm-charcoal">
+          We don&rsquo;t ask for passport scans. Verification is <b>social-graph based</b>: every
+          user connects at least two of LinkedIn, X, or WhatsApp before they can post a trip or send
+          a request.
+        </p>
+      </section>
+
+      <div className="mt-6 grid gap-3 md:grid-cols-3">
         {CHANNELS.map(({ icon: Icon, name, body }) => (
-          <Card key={name}>
-            <CardContent className="space-y-2 p-5">
+          <Card key={name} className="h-full">
+            <CardContent className="flex h-full flex-col gap-2 p-5">
               <div className="flex items-center gap-2">
-                <Icon className="text-saffron-600 size-5" aria-hidden />
+                <Icon className="size-5 text-matcha-600" aria-hidden />
                 <h3 className="font-serif text-lg">{name}</h3>
               </div>
               <p className="text-sm text-muted-foreground">{body}</p>
@@ -98,63 +114,99 @@ export default function AboutPage() {
         ))}
       </div>
 
-      <h3 className="mt-12 font-serif text-xl">Other non-negotiables</h3>
-      <ul className="mt-4 space-y-3 text-muted-foreground">
+      <ul className="mt-6 space-y-3 text-sm text-warm-charcoal">
         <li>
-          <b>No PII before accept.</b> Full names, contact info, and parent photos are hidden until
-          a match request is accepted.
+          <b className="text-foreground">No PII before accept.</b> Full names, contact info, and
+          photos of your loved one stay hidden until a match request is accepted.
         </li>
         <li>
-          <b>Reviews tied to completed trips only.</b> Both parties must mark the trip completed —
-          there&apos;s no way to leave a review otherwise.
+          <b className="text-foreground">Reviews tied to completed trips only.</b> Both parties mark
+          the trip done before anyone can leave a review.
         </li>
         <li>
-          <b>Report &amp; block.</b> Every profile and every chat has a report button; blocked
-          users&apos; trips don&apos;t appear in your search.
+          <b className="text-foreground">Report &amp; block.</b> Every profile and every chat has a
+          report button. Blocked users&rsquo; trips disappear from your view.
         </li>
         <li>
-          <b>Admin review.</b> Flagged text and reports land in a human queue — we suspend and
-          re-verify by hand.
+          <b className="text-foreground">Admin review.</b> Flagged text and reports land in a human
+          queue. We suspend and re-verify by hand.
         </li>
       </ul>
 
-      <div className="mt-10 rounded-lg border bg-muted/40 p-5 text-sm text-muted-foreground">
+      <div className="mt-8 rounded-2xl border border-dashed border-oat bg-oat-light/40 p-5 text-sm text-warm-charcoal">
         <b>A clear disclaimer:</b> Saathi is an introduction service. You are responsible for your
         own arrangement, payment, and travel. We do not screen beyond social verification.
       </div>
 
-      <section className="mt-16 space-y-3">
-        <h2 className="font-serif text-2xl">Who&apos;s behind this</h2>
-        <p className="text-muted-foreground">
-          Saathi is an open-source effort, currently maintained by{' '}
+      {/* ─── Chapter 5 — What we are not ──────────────────────────────── */}
+      <section className="mt-14 space-y-4">
+        <h2 className="font-serif text-2xl md:text-3xl">What Saathi isn&rsquo;t.</h2>
+        <p className="text-warm-charcoal">
+          We&rsquo;re not <em>meet-and-assist-as-a-service</em>. Professional airport assistance
+          exists — Schiphol charges €80–120 for it. It&rsquo;s competent but it&rsquo;s uniformed
+          and it rarely speaks your mother tongue.
+        </p>
+        <p className="text-warm-charcoal">
+          Saathi is cheaper, but more importantly it&rsquo;s cultural. Someone who speaks your
+          mother&rsquo;s language, shares her food habits, and understands why the Doha transfer
+          makes her anxious is worth more than any uniform.
+        </p>
+      </section>
+
+      {/* ─── Chapter 6 — Who's behind this ────────────────────────────── */}
+      <section className="mt-14 space-y-4">
+        <h2 className="font-serif text-2xl md:text-3xl">Who&rsquo;s behind this.</h2>
+        <p className="text-warm-charcoal">
+          Saathi is open source, built in the open by{' '}
           <a
             href="https://github.com/raahulrahl"
-            className="underline"
             target="_blank"
             rel="noreferrer"
+            className="text-marigold-700 underline underline-offset-4"
           >
             Raahul
           </a>{' '}
           and{' '}
           <a
             href="https://github.com/dikshaSahni"
-            className="underline"
             target="_blank"
             rel="noreferrer"
+            className="text-marigold-700 underline underline-offset-4"
           >
             Diksha
           </a>
-          . Issues, ideas, and PRs are welcome on{' '}
+          . If you want to file an issue, send a PR, or just read the code, it&rsquo;s on{' '}
           <a
-            href="https://github.com/raahulrahl/sathi"
-            className="underline"
+            href="https://github.com/raahulrahl/saathi"
             target="_blank"
             rel="noreferrer"
+            className="text-marigold-700 underline underline-offset-4"
           >
             GitHub
           </a>
           .
         </p>
+      </section>
+
+      {/* ─── CTA row ──────────────────────────────────────────────────── */}
+      <section className="mt-16 flex flex-col items-start gap-3 rounded-3xl border border-oat bg-gradient-to-br from-cream to-oat-light/30 p-8 shadow-clay sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-serif text-xl">Ready to make the introduction?</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Browse who&rsquo;s on your flight, or post a trip yourself.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href="/browse">Browse flights</Link>
+          </Button>
+          <Button asChild variant="lemon">
+            <Link href="/dashboard/new/offer">Offer to help</Link>
+          </Button>
+          <Button asChild variant="slushie">
+            <Link href="/dashboard/new/request">Post a request</Link>
+          </Button>
+        </div>
       </section>
     </article>
   );
