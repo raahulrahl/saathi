@@ -47,8 +47,12 @@ type Result =
     };
 
 function defaultPeekDate(): string {
+  // 45 days out — a realistic "before you book" horizon for an international
+  // ticket. Short enough that airline schedules are published and postings
+  // exist, far enough that a family has time to actually buy the ticket if
+  // the peek shows a match.
   const d = new Date();
-  d.setDate(d.getDate() + 14);
+  d.setDate(d.getDate() + 45);
   return format(d, 'yyyy-MM-dd');
 }
 

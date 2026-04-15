@@ -440,7 +440,10 @@ function RouteDot({ index, total, label, value, onChange, onRemove, big = false 
             autoComplete="off"
             className={cn(
               'border-0 bg-transparent p-0 font-mono font-semibold tracking-wider text-foreground outline-none placeholder:text-warm-silver',
-              big ? 'w-14 text-2xl' : 'w-12 text-lg',
+              // Responsive: even in hero mode, mobile gets the compact sizing
+              // so three dots + add button fit on one row at 375px. Desktop
+              // still gets the generous treatment.
+              big ? 'w-12 text-lg md:w-14 md:text-2xl' : 'w-12 text-lg',
             )}
             onFocus={() => setFocused(true)}
             onBlur={() => setTimeout(() => setFocused(false), 150)}
