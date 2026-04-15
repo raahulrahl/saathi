@@ -1,4 +1,3 @@
-import { auth } from '@clerk/nextjs/server';
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { Calendar, Compass } from 'lucide-react';
@@ -6,9 +5,17 @@ import { FlightComposer } from '@/components/flight-composer';
 import { TripCard, type TripCardData } from '@/components/trip-card';
 import { EmptyState } from '@/components/empty-state';
 import { Separator } from '@/components/ui/separator';
+import { getUserId } from '@/lib/auth-guard';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { rankTrips, type RankableTrip, type Scored } from '@/lib/matching';
 import { isValidIata, formatAirport } from '@/lib/iata';
+import {
+  DEFAULT_DATE_WINDOW_DAYS,
+  enrichTripsWithProfiles,
+  fetchTripsForSearch,
+  fetchViewerProfile,
+  type ViewerProfile,
+} from '@/lib/search';
 
 export const metadata: Metadata = {
   title: 'Browse trips',
@@ -22,31 +29,25 @@ interface SearchPageProps {
   searchParams: Promise<{ from?: string; to?: string; date?: string; fn?: string }>;
 }
 
+/**
+ * The route page itself. Parses the URL params, renders the chrome
+ * (heading, composer, empty state), and hands off the async work to the
+ * <Results /> component under a Suspense boundary so the non-DB parts
+ * of the page show immediately.
+ */
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const { from = '', to = '', date = '', fn = '' } = await searchParams;
   const f = from.toUpperCase();
   const t = to.toUpperCase();
-  // Flight numbers are comma-separated in the URL: ?fn=QR540,QR23.
-  const flightNumbers = fn
-    .split(',')
-    .map((s) => s.trim().toUpperCase().replace(/\s+/g, ''))
-    .filter(Boolean);
+  const flightNumbers = parseFlightNumbers(fn);
   const validInput = isValidIata(f) && isValidIata(t) && !!date;
 
-  // Role powers FlightComposer's Offer-mode submit target.
-  let viewerRole: 'family' | 'companion' | null = null;
-  const { userId } = await auth();
-  if (userId) {
-    const supabase = await createSupabaseServerClient();
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', userId)
-      .maybeSingle();
-    if (profile?.role === 'family' || profile?.role === 'companion') {
-      viewerRole = profile.role;
-    }
-  }
+  // Fetch the viewer's profile once here — used by the composer for
+  // role-aware submit targets AND by Results for language highlighting.
+  // Consolidating the fetch avoids two round-trips for the same row.
+  const supabase = await createSupabaseServerClient();
+  const userId = await getUserId();
+  const viewer = await fetchViewerProfile(supabase, userId);
 
   return (
     <div className="container py-8">
@@ -65,7 +66,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         className="mt-6"
         variant="compact"
         defaultMode="seek"
-        viewerRole={viewerRole}
+        viewerRole={viewer.role}
         {...(f && t ? { defaultRoute: [f, t] } : {})}
         {...(date ? { defaultDate: date } : {})}
         {...(flightNumbers.length > 0 ? { defaultFlightNumbers: flightNumbers } : {})}
@@ -80,147 +81,69 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         />
       ) : (
         <Suspense fallback={<div className="mt-10 text-sm text-muted-foreground">Loading…</div>}>
-          <Results from={f} to={t} date={date} flightNumbers={flightNumbers} />
+          <Results from={f} to={t} date={date} flightNumbers={flightNumbers} viewer={viewer} />
         </Suspense>
       )}
     </div>
   );
 }
 
+/**
+ * Parse the `?fn=QR540,QR23` URL param into an uppercased, whitespace-
+ * stripped array. Anything non-truthy (empty param, bare commas) drops
+ * out. Matches the normalisation the FlightComposer does on typed input.
+ */
+function parseFlightNumbers(fn: string): string[] {
+  return fn
+    .split(',')
+    .map((s) => s.trim().toUpperCase().replace(/\s+/g, ''))
+    .filter(Boolean);
+}
+
+/**
+ * Async data section. Runs inside a Suspense boundary so the page chrome
+ * renders while this is waiting on the DB. Fetches trips, attaches poster
+ * profile data, ranks, and splits into two columns.
+ */
 async function Results({
   from,
   to,
   date,
   flightNumbers,
+  viewer,
 }: {
   from: string;
   to: string;
   date: string;
   flightNumbers: string[];
+  viewer: ViewerProfile;
 }) {
   const supabase = await createSupabaseServerClient();
-
-  // Authed viewer's languages used for in-card bolding.
-  let viewerLanguages: string[] = [];
-  let viewerPrimary: string | null = null;
-  const { userId } = await auth();
-  if (userId) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('languages, primary_language')
-      .eq('id', userId)
-      .maybeSingle();
-    if (profile) {
-      viewerLanguages = profile.languages ?? [];
-      viewerPrimary = profile.primary_language;
-    }
-  }
-
-  // Two modes:
-  //   * flight-number search — strict exact match on flight_numbers array;
-  //     the DB-level `overlaps` does the heavy lifting via the GIN index.
-  //   * route + date search — same-day + same-route, with a ±1 day window
-  //     so red-eyes and timezone fuzz don't miss. (Was ±3 before; a wider
-  //     window lied about matches because ±3d on the same route rarely
-  //     means "same plane".)
-  const DATE_WINDOW_DAYS = 1;
-  const { start, end } = dateWindow(date, DATE_WINDOW_DAYS);
-
-  let query = supabase
-    .from('public_trips')
-    .select(
-      `id, user_id, kind, route, travel_date, airline, flight_numbers,
-       languages, gender_preference, help_categories, thank_you_eur, notes,
-       status, elderly_age_band, created_at`,
-    )
-    .eq('status', 'open')
-    .contains('route', [from])
-    .contains('route', [to]);
-
-  if (flightNumbers.length > 0) {
-    // `overlaps` with a multi-element array matches any row where ANY of
-    // the trip's flight numbers intersects ANY of the searcher's — same
-    // semantics as the TS-side `matchingFlightNumbers()`.
-    query = query.overlaps('flight_numbers', flightNumbers);
-  } else {
-    query = query.gte('travel_date', start).lte('travel_date', end);
-  }
-
-  const { data: trips, error } = await query;
+  const { data: trips, error } = await fetchTripsForSearch(supabase, {
+    from,
+    to,
+    date,
+    flightNumbers,
+    dateWindowDays: DEFAULT_DATE_WINDOW_DAYS,
+  });
 
   if (error) {
     return (
       <div className="mt-10 rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
-        Couldn't load trips: {error.message}
+        Couldn&apos;t load trips: {error.message}
       </div>
     );
   }
 
-  // Join profile bits for the card (display_name, photo, primary language,
-  // verified count). Single round-trip via in() on the unique user_ids.
-  const userIds = Array.from(new Set(trips?.map((tr) => tr.user_id) ?? []));
-  const profilesById = new Map<
-    string,
-    {
-      display_name: string | null;
-      photo_url: string | null;
-      primary_language: string;
-    }
-  >();
-  if (userIds.length > 0) {
-    const { data: ps } = await supabase
-      .from('public_profiles')
-      .select('id, display_name, photo_url, primary_language')
-      .in('id', userIds);
-    (ps ?? []).forEach((p) =>
-      profilesById.set(p.id, {
-        display_name: p.display_name,
-        photo_url: p.photo_url,
-        primary_language: p.primary_language,
-      }),
-    );
-  }
-
-  const enriched: (RankableTrip & { kind: 'request' | 'offer'; card: TripCardData })[] = (
-    trips ?? []
-  ).map((tr) => {
-    const p = profilesById.get(tr.user_id);
-    const card: TripCardData = {
-      id: tr.id,
-      kind: tr.kind,
-      display_name: p?.display_name ?? 'Anonymous',
-      photo_url: p?.photo_url ?? null,
-      languages: tr.languages,
-      primary_language: p?.primary_language ?? null,
-      route: tr.route,
-      travel_date: tr.travel_date,
-      elderly_age_band: tr.elderly_age_band,
-      help_categories: tr.help_categories,
-      thank_you_eur: tr.thank_you_eur,
-      airline: tr.airline,
-      flight_numbers: tr.flight_numbers ?? null,
-    };
-    return {
-      id: tr.id,
-      user_id: tr.user_id,
-      route: tr.route,
-      travel_date: tr.travel_date,
-      languages: tr.languages,
-      primary_language: p?.primary_language ?? null,
-      flight_numbers: tr.flight_numbers ?? null,
-      kind: tr.kind,
-      card,
-    };
-  });
-
+  const enriched = await enrichTripsWithProfiles(supabase, trips ?? []);
   const ranked = rankTrips(enriched, {
     origin: from,
     destination: to,
     date,
-    dateWindowDays: DATE_WINDOW_DAYS,
+    dateWindowDays: DEFAULT_DATE_WINDOW_DAYS,
     ...(flightNumbers.length > 0 ? { flightNumbers } : {}),
-    viewerLanguages,
-    viewerPrimaryLanguage: viewerPrimary,
+    viewerLanguages: viewer.languages,
+    viewerPrimaryLanguage: viewer.primaryLanguage,
   });
 
   const requests = ranked.filter((r) => (r.trip as (typeof enriched)[number]).kind === 'request');
@@ -253,7 +176,7 @@ async function Results({
           cta="Post a request"
           ctaHref={`/post/request?from=${from}&to=${to}&date=${date}`}
           items={requests}
-          viewerLanguages={viewerLanguages}
+          viewerLanguages={viewer.languages}
         />
         <Column
           label="Travellers offering to help"
@@ -262,13 +185,18 @@ async function Results({
           cta="Offer to help"
           ctaHref={`/post/offer?from=${from}&to=${to}&date=${date}`}
           items={offers}
-          viewerLanguages={viewerLanguages}
+          viewerLanguages={viewer.languages}
         />
       </div>
     </>
   );
 }
 
+/**
+ * One of the two result columns on the search page. Pure rendering —
+ * takes already-scored items and either renders cards or an empty state
+ * with a CTA to post into this exact route/date.
+ */
 function Column<T extends RankableTrip & { card: TripCardData }>({
   label,
   emptyTitle,
@@ -308,12 +236,4 @@ function Column<T extends RankableTrip & { card: TripCardData }>({
       </div>
     </section>
   );
-}
-
-function dateWindow(centre: string, days: number) {
-  const c = new Date(`${centre}T00:00:00Z`);
-  const ms = days * 86_400_000;
-  const start = new Date(c.getTime() - ms).toISOString().slice(0, 10);
-  const end = new Date(c.getTime() + ms).toISOString().slice(0, 10);
-  return { start, end };
 }
