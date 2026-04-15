@@ -127,5 +127,5 @@ export async function createTripAction(input: TripInput) {
 
   revalidatePath('/dashboard');
   revalidatePath('/search');
-  redirect(`/trip/${created.id}`);
+  redirect(`/trip/${created.id}?new=true`);
 }

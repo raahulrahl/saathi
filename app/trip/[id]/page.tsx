@@ -4,37 +4,84 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { format, parseISO } from 'date-fns';
-import { ArrowRight, Calendar, ChevronRight, Info, MapPin, ShieldAlert } from 'lucide-react';
+import {
+  ArrowRight,
+  Calendar,
+  ChevronRight,
+  Info,
+  MapPin,
+  ShieldAlert,
+  Sparkles,
+} from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { LanguageChipRow } from '@/components/language-chip';
 import { RouteLine } from '@/components/route-line';
+import { TripShareButtons } from '@/components/trip-share-buttons';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { HELP_CATEGORIES } from '@/lib/languages';
 
 interface TripPageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ new?: string }>;
 }
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://getsaathi.com';
 
 export async function generateMetadata({ params }: TripPageProps): Promise<Metadata> {
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from('public_trips')
-    .select('route, travel_date, kind')
+    .select('route, travel_date, kind, airline')
     .eq('id', id)
     .maybeSingle();
   if (!data) return { title: 'Trip not found' };
+
+  const routeStr = data.route.join(' → ');
+  const dateStr = format(parseISO(data.travel_date), 'd LLL yyyy');
+  const isRequest = data.kind === 'request';
+  const title = isRequest ? `Companion wanted: ${routeStr}` : `Offering help: ${routeStr}`;
+  const description = isRequest
+    ? `Looking for a travel companion on ${routeStr} · ${dateStr}`
+    : `${data.airline ? `${data.airline} · ` : ''}${routeStr} · ${dateStr} — find them on Saathi`;
+
+  const pageUrl = `${SITE_URL}/trip/${id}`;
+
   return {
-    title: `${data.kind === 'request' ? 'Request' : 'Offer'}: ${data.route.join(' → ')}`,
-    description: `${format(parseISO(data.travel_date), 'd LLL yyyy')} — on Saathi`,
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url: pageUrl,
+      siteName: 'Saathi',
+      type: 'website',
+      // Next.js auto-adds the opengraph-image.tsx output here, but we can
+      // also be explicit so sharing previews work before the first crawl.
+      images: [
+        {
+          url: `${SITE_URL}/trip/${id}/opengraph-image`,
+          width: 1200,
+          height: 630,
+          alt: `${isRequest ? 'Request' : 'Offer'}: ${routeStr}`,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [`${SITE_URL}/trip/${id}/opengraph-image`],
+    },
   };
 }
 
-export default async function TripPage({ params }: TripPageProps) {
+export default async function TripPage({ params, searchParams }: TripPageProps) {
   const { id } = await params;
+  const { new: isNewTrip } = await searchParams;
   const supabase = await createSupabaseServerClient();
 
   const { data: trip } = await supabase.from('public_trips').select('*').eq('id', id).maybeSingle();
@@ -51,6 +98,9 @@ export default async function TripPage({ params }: TripPageProps) {
   const isRequest = trip.kind === 'request';
   const helpLabels = new Map(HELP_CATEGORIES.map((h) => [h.key, h]));
 
+  // Show the share prompt if this is the first landing after creation
+  const showShareBanner = isOwner && isNewTrip === 'true';
+
   return (
     <div className="container max-w-4xl py-8">
       <nav className="mb-4 flex items-center gap-1 text-xs text-muted-foreground">
@@ -62,6 +112,20 @@ export default async function TripPage({ params }: TripPageProps) {
           {trip.route[0]} → {trip.route[trip.route.length - 1]}
         </span>
       </nav>
+
+      {/* Post-creation share banner */}
+      {showShareBanner && (
+        <div className="mb-6 rounded-2xl border border-matcha-600/20 bg-matcha-600/5 p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <Sparkles className="size-5 text-matcha-600" />
+            <p className="font-semibold text-matcha-600">Your offer is live!</p>
+          </div>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Share it in your community groups so the right person finds you.
+          </p>
+          <TripShareButtons tripId={id} route={trip.route} variant="banner" />
+        </div>
+      )}
 
       <div className="grid gap-8 md:grid-cols-[2fr_1fr]">
         <article className="space-y-6">
@@ -192,13 +256,16 @@ export default async function TripPage({ params }: TripPageProps) {
               ) : null}
 
               {isOwner ? (
-                <div className="rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground">
-                  This is your trip. Incoming requests show up in your{' '}
-                  <Link href="/dashboard" className="underline">
-                    dashboard
-                  </Link>
-                  .
-                </div>
+                <>
+                  <div className="rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground">
+                    This is your trip. Incoming requests show up in your{' '}
+                    <Link href="/dashboard" className="underline">
+                      dashboard
+                    </Link>
+                    .
+                  </div>
+                  <TripShareButtons tripId={id} route={trip.route} variant="sidebar" />
+                </>
               ) : viewer ? (
                 <Button asChild className="w-full" size="lg">
                   <Link href={`/trip/${id}/request`}>
