@@ -22,6 +22,12 @@
 -- ---------------------------------------------------------------------------
 -- 1. Rebuild public_profiles view with derived languages / primary_language
 -- ---------------------------------------------------------------------------
+-- Column order MUST match 0009's view exactly. CREATE OR REPLACE VIEW only
+-- allows adding columns at the end — it can't reorder, rename, or change
+-- the type of an existing column position. Hence languages + primary_language
+-- stay at positions 6 and 7; only their definitions swap from `p.<col>`
+-- to a derived subquery on profile_languages.
+--
 -- Using scalar subqueries (one per column) rather than lateral joins because
 -- there are only two language-derived columns; a JOIN would make us carry the
 -- rest of the SELECT list through a GROUP BY. Subqueries are executed once
@@ -35,13 +41,6 @@ select
   p.display_name,
   p.photo_url,
   p.bio,
-  p.created_at,
-  p.updated_at,
-  p.is_active,
-  p.linkedin_url,
-  p.facebook_url,
-  p.twitter_url,
-  p.instagram_url,
   -- All languages for this profile, primary first, then alphabetical.
   -- Deterministic ordering keeps card rendering stable across fetches.
   coalesce(
@@ -55,7 +54,14 @@ select
      from public.profile_languages pl
     where pl.profile_id = p.id
       and pl.is_primary
-    limit 1) as primary_language
+    limit 1) as primary_language,
+  p.created_at,
+  p.updated_at,
+  p.is_active,
+  p.linkedin_url,
+  p.facebook_url,
+  p.twitter_url,
+  p.instagram_url
 from public.profiles p
 where p.is_active = true;
 
