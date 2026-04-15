@@ -1,7 +1,6 @@
-import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
+import { requireUserId } from '@/lib/auth-guard';
 import { format, parseISO } from 'date-fns';
 import { Inbox, Pencil, Plus, Send, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -24,9 +23,7 @@ interface DashboardPageProps {
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const supabase = await createSupabaseServerClient();
-  const { userId } = await auth();
-  if (!userId) redirect('/auth/sign-in?next=/dashboard');
-  const uid = userId;
+  const uid = await requireUserId('/dashboard');
   const { welcome } = await searchParams;
   // Show the "profile saved" banner on first dashboard arrival from the
   // onboarding redirect. Drops out after the user navigates anywhere else

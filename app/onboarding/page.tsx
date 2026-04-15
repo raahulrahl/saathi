@@ -1,6 +1,5 @@
-import { auth } from '@clerk/nextjs/server';
-import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
+import { requireUserId } from '@/lib/auth-guard';
 import { syncClerkUserToSupabase } from '@/lib/clerk-sync';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { OnboardingForm } from './onboarding-form';
@@ -28,8 +27,7 @@ export const metadata: Metadata = { title: 'Welcome · Saathi' };
  * cards, not as a gate.
  */
 export default async function OnboardingPage() {
-  const { userId } = await auth();
-  if (!userId) redirect('/auth/sign-in?redirect_url=/onboarding');
+  const userId = await requireUserId('/onboarding');
 
   // Self-heal: create/update profile row from Clerk state.
   await syncClerkUserToSupabase(userId);

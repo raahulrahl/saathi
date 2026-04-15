@@ -1,10 +1,10 @@
-import { auth } from '@clerk/nextjs/server';
 import { redirect, notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent } from '@/components/ui/card';
 import { LanguageChipRow } from '@/components/language-chip';
 import { RouteLine } from '@/components/route-line';
+import { requireUserId } from '@/lib/auth-guard';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { RequestForm } from './request-form';
 
@@ -13,8 +13,7 @@ export const metadata: Metadata = { title: 'Send a request' };
 export default async function SendRequestPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
-  const { userId } = await auth();
-  if (!userId) redirect(`/auth/sign-in?next=/trip/${id}/request`);
+  const userId = await requireUserId(`/trip/${id}/request`);
 
   const { data: trip } = await supabase.from('public_trips').select('*').eq('id', id).maybeSingle();
   if (!trip) notFound();

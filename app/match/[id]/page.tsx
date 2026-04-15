@@ -1,5 +1,4 @@
-import { auth } from '@clerk/nextjs/server';
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { format, parseISO } from 'date-fns';
@@ -8,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { LanguageChipRow } from '@/components/language-chip';
 import { RouteLine } from '@/components/route-line';
+import { requireUserId } from '@/lib/auth-guard';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export const metadata: Metadata = { title: 'Match' };
@@ -26,8 +26,7 @@ const MATCH_FEATURES_ENABLED = process.env.NEXT_PUBLIC_MATCH_FEATURES_ENABLED ==
 export default async function MatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
-  const { userId } = await auth();
-  if (!userId) redirect(`/auth/sign-in?next=/match/${id}`);
+  const userId = await requireUserId(`/match/${id}`);
 
   const { data: match } = await supabase
     .from('matches')

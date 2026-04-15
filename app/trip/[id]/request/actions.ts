@@ -1,8 +1,8 @@
 'use server';
 
-import { auth } from '@clerk/nextjs/server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { getUserId } from '@/lib/auth-guard';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { moderateText } from '@/lib/moderation';
 
@@ -17,16 +17,13 @@ export async function sendMatchRequestAction(input: z.infer<typeof Input>) {
     return { ok: false, error: 'Please write at least a couple of sentences.' } as const;
   }
   const supabase = await createSupabaseServerClient();
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) return { ok: false, error: 'Please sign in.' } as const;
 
-  const { data: verifs } = await supabase
-    .from('verifications')
-    .select('channel, verified_at')
-    .eq('user_id', userId);
-  if ((verifs ?? []).filter((v) => v.verified_at).length < 2) {
-    return { ok: false, error: 'Please verify at least two channels first.' } as const;
-  }
+  // The 2-of-N verification gate was removed alongside the verifications
+  // table (see migration 0009). Sending a match request is now open to any
+  // signed-in user who's completed onboarding. Moderation on the intro
+  // message is still enforced below — that's the load-bearing check now.
 
   const mod = await moderateText(parsed.data.intro_message);
   if (mod.flagged) {

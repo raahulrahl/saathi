@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono, Space_Mono } from 'next/font/google';
+import { Geist, Space_Mono } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
@@ -20,13 +20,6 @@ const mono = Space_Mono({
   subsets: ['latin'],
   variable: '--font-mono',
   weight: ['400', '700'],
-  display: 'swap',
-});
-// Loaded but unused right now — reserved for future code-like labels if we
-// want a Geist Mono variant instead of Space Mono.
-const _geistMono = Geist_Mono({
-  subsets: ['latin'],
-  variable: '--font-geist-mono',
   display: 'swap',
 });
 
@@ -55,7 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         },
       }}
     >
-      <html lang="en" className={`${display.variable} ${mono.variable} ${_geistMono.variable}`}>
+      <html lang="en" className={`${display.variable} ${mono.variable}`}>
         <body className="flex min-h-screen flex-col bg-background font-sans text-foreground antialiased">
           <SiteHeader />
           <main className="flex-1">{children}</main>

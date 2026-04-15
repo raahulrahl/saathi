@@ -1,6 +1,5 @@
-import { auth } from '@clerk/nextjs/server';
-import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
+import { requireUserId } from '@/lib/auth-guard';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { PostWizard } from '../post-wizard';
 
@@ -13,8 +12,7 @@ interface PostOfferPageProps {
 export default async function PostOfferPage({ searchParams }: PostOfferPageProps) {
   const { from = '', to = '', date = '' } = await searchParams;
   const supabase = await createSupabaseServerClient();
-  const { userId } = await auth();
-  if (!userId) redirect('/auth/sign-in?next=/post/offer');
+  const userId = await requireUserId('/post/offer');
 
   const { data: profile } = await supabase
     .from('profiles')
