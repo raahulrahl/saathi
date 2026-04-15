@@ -165,6 +165,9 @@ export function OnboardingForm({ initialValues }: OnboardingFormProps) {
   );
 
   // Per-step validation. Called on Next click, never on render.
+  // WhatsApp verification is a hard stop: the user must successfully
+  // run the OTP flow before proceeding to step 3. Matching happens over
+  // WhatsApp, so a number we can't prove reaches the user is useless.
   function validateStep(s: 1 | 2 | 3): string | null {
     if (s === 1) {
       if (!displayName.trim()) return 'Tell us what to call you.';
@@ -172,6 +175,9 @@ export function OnboardingForm({ initialValues }: OnboardingFormProps) {
     } else if (s === 2) {
       if (languages.length < 1) return 'Pick at least one language.';
       if (!phoneState.valid) return phoneState.message ?? 'Enter a valid WhatsApp number.';
+      if (!whatsappVerified) {
+        return 'Please verify your WhatsApp number via the OTP before continuing.';
+      }
     } else if (s === 3) {
       if (filledSocialCount < 2) return 'Share at least two social profile links.';
     }
