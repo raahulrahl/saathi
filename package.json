@@ -23,7 +23,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@clerk/nextjs": "^7.1.0",
+    "@clerk/nextjs": "^7.2.1",
     "@flags-sdk/posthog": "^0.2.2",
     "@hookform/resolvers": "^3.9.1",
     "@radix-ui/react-avatar": "^1.1.1",
@@ -37,7 +37,7 @@
     "@radix-ui/react-tabs": "^1.1.1",
     "@radix-ui/react-toast": "^1.2.2",
     "@sentry/nextjs": "^10.48.0",
-    "@supabase/supabase-js": "^2.47.10",
+    "@supabase/supabase-js": "^2.103.2",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.37.0",
     "@vercel/analytics": "^2.0.1",
@@ -76,8 +76,8 @@
     "jsdom": "^25.0.1",
     "lint-staged": "^15.2.11",
     "postcss": "^8.4.49",
-    "prettier": "^3.4.2",
-    "prettier-plugin-tailwindcss": "^0.6.9",
+    "prettier": "^3.8.3",
+    "prettier-plugin-tailwindcss": "^0.7.2",
     "supabase": "^1.223.10",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.7.2",
