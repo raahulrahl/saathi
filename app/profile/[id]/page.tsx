@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
+import { Facebook, Instagram, Linkedin, Twitter } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -82,6 +83,31 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
               <VerifiedBadge key={v.channel} channel={v.channel} />
             ))}
           </div>
+          {/* Self-reported social profile links. Not OAuth-verified — the
+              onboarding form just takes URLs. Rendered as small icon
+              buttons; inert if missing. */}
+          {(profile.linkedin_url ||
+            profile.facebook_url ||
+            profile.twitter_url ||
+            profile.instagram_url) && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-xs uppercase tracking-wider text-warm-silver">
+                Find them on
+              </span>
+              {profile.linkedin_url ? (
+                <SocialLink href={profile.linkedin_url} label="LinkedIn" icon={Linkedin} />
+              ) : null}
+              {profile.facebook_url ? (
+                <SocialLink href={profile.facebook_url} label="Facebook" icon={Facebook} />
+              ) : null}
+              {profile.twitter_url ? (
+                <SocialLink href={profile.twitter_url} label="X / Twitter" icon={Twitter} />
+              ) : null}
+              {profile.instagram_url ? (
+                <SocialLink href={profile.instagram_url} label="Instagram" icon={Instagram} />
+              ) : null}
+            </div>
+          )}
         </div>
       </header>
 
@@ -154,5 +180,34 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
         </aside>
       </section>
     </div>
+  );
+}
+
+/**
+ * Social profile link chip. Externally linked with noopener/noreferrer
+ * because these are user-submitted URLs we do not verify — they could
+ * point anywhere — and we don't want them leaking our referrer.
+ */
+function SocialLink({
+  href,
+  label,
+  icon: Icon,
+}: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer nofollow"
+      aria-label={`Open ${label} profile`}
+      title={label}
+      className="inline-flex items-center gap-1.5 rounded-full border border-oat bg-white px-3 py-1 text-xs font-medium text-warm-charcoal hover:bg-oat-light"
+    >
+      <Icon className="size-3.5" aria-hidden />
+      {label}
+    </a>
   );
 }

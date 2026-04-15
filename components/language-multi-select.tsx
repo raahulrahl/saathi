@@ -16,12 +16,22 @@ interface LanguageMultiSelectProps {
   placeholder?: string;
   className?: string;
   id?: string;
+  /**
+   * When true, the first selected language is visually marked as the
+   * "Primary" one (matcha badge on its chip). This lets a single
+   * multi-select capture both the primary and additional languages in
+   * one UI, with the primary being whatever the user selected first.
+   * Used on onboarding; off by default for the post wizard where the
+   * trip's languages don't have a hierarchy.
+   */
+  markFirstAsPrimary?: boolean;
 }
 
 /**
- * Multi-select dropdown with inline search. Used for "languages you speak"
- * in both the post wizard (trip-level languages) and the onboarding
- * profile form.
+ * Multi-select dropdown with inline search. Used everywhere the app asks
+ * for a list of languages — onboarding profile, post wizard, etc. —
+ * paired with the shared LANGUAGES list from `lib/languages.ts` so the
+ * option set stays identical across screens.
  *
  * Design: trigger button shows either a placeholder or the count of
  * selected items, plus chips underneath for what's currently picked so
@@ -34,6 +44,7 @@ export function LanguageMultiSelect({
   placeholder = 'Select languages…',
   className,
   id,
+  markFirstAsPrimary = false,
 }: LanguageMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -106,7 +117,7 @@ export function LanguageMultiSelect({
                         className="pointer-events-none"
                       />
                       <span className="flex-1">{l}</span>
-                      {isSelected ? <Check className="size-3.5 text-saffron-600" /> : null}
+                      {isSelected ? <Check className="text-saffron-600 size-3.5" /> : null}
                     </button>
                   </li>
                 );
@@ -118,23 +129,29 @@ export function LanguageMultiSelect({
 
       {selected.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
-          {selected.map((l) => (
-            <Badge
-              key={l}
-              variant="secondary"
-              className="gap-1 rounded-full py-1 pl-2.5 pr-1 font-normal"
-            >
-              {l}
-              <button
-                type="button"
-                onClick={() => remove(l)}
-                aria-label={`Remove ${l}`}
-                className="rounded-full p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+          {selected.map((l, i) => {
+            const isPrimary = markFirstAsPrimary && i === 0;
+            return (
+              <Badge
+                key={l}
+                variant={isPrimary ? 'matcha' : 'secondary'}
+                className="gap-1 rounded-full py-1 pl-2.5 pr-1 font-normal"
               >
-                <X className="size-3" />
-              </button>
-            </Badge>
-          ))}
+                {l}
+                {isPrimary ? (
+                  <span className="text-[10px] uppercase tracking-wider opacity-80">· Primary</span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => remove(l)}
+                  aria-label={`Remove ${l}`}
+                  className="rounded-full p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            );
+          })}
         </div>
       ) : null}
     </div>

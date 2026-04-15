@@ -37,18 +37,36 @@ export default async function OnboardingPage() {
   const supabase = await createSupabaseServerClient();
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, role, display_name, full_name, bio, languages, primary_language, whatsapp_number')
+    .select(
+      `id, role, display_name, full_name, bio, languages, primary_language, whatsapp_number,
+       linkedin_url, facebook_url, twitter_url, instagram_url`,
+    )
     .eq('id', userId)
     .maybeSingle();
+
+  // The same form doubles as "edit your profile" — the dashboard has an
+  // Edit button that links back here. If the user already has a role set
+  // we treat it as edit-mode (different heading, same form).
+  const isEditing = !!profile?.role;
 
   return (
     <div className="container max-w-xl py-14">
       <div className="space-y-2 text-center">
         <h1 className="font-display text-3xl font-semibold tracking-[-0.02em] md:text-4xl">
-          Welcome to <span className="text-marigold-700">Saathi</span>.
+          {isEditing ? (
+            <>
+              Edit your <span className="text-marigold-700">Saathi</span> profile
+            </>
+          ) : (
+            <>
+              Welcome to <span className="text-marigold-700">Saathi</span>.
+            </>
+          )}
         </h1>
         <p className="text-base leading-relaxed text-warm-charcoal">
-          Just a few details so other travellers know who they&rsquo;re meeting. Takes a minute.
+          {isEditing
+            ? 'Update anything below. Changes save to your public profile immediately.'
+            : 'Just a few details so other travellers know who they’re meeting. Takes a minute.'}
         </p>
       </div>
 
@@ -57,10 +75,13 @@ export default async function OnboardingPage() {
           initialValues={{
             displayName: profile?.display_name ?? '',
             role: (profile?.role as 'family' | 'companion' | null) ?? null,
-            primaryLanguage: profile?.primary_language ?? 'English',
-            languages: profile?.languages ?? ['English'],
+            languages: profile?.languages ?? [],
             whatsappNumber: profile?.whatsapp_number ?? '',
             bio: profile?.bio ?? '',
+            linkedinUrl: profile?.linkedin_url ?? '',
+            facebookUrl: profile?.facebook_url ?? '',
+            twitterUrl: profile?.twitter_url ?? '',
+            instagramUrl: profile?.instagram_url ?? '',
           }}
         />
       </div>

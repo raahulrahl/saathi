@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { format, parseISO } from 'date-fns';
-import { Inbox, Plus, Send, Users } from 'lucide-react';
+import { Inbox, Pencil, Plus, Send, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -63,7 +63,12 @@ export default async function DashboardPage() {
     <div className="container max-w-5xl py-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-serif text-3xl">Dashboard</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/onboarding">
+              <Pencil className="mr-1 size-3.5" /> Edit profile
+            </Link>
+          </Button>
           <Button asChild variant="outline">
             <Link href="/post/offer">
               <Plus className="mr-1 size-4" /> New offer
