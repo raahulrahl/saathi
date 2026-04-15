@@ -1,9 +1,17 @@
 import type { Metadata } from 'next';
 import { Geist, Space_Mono } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
+import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
 import './globals.css';
+
+// Analytics + Speed Insights are no-ops outside Vercel and gate themselves
+// on prod by default — safe to mount in the root layout. Analytics ships
+// pageview events; SpeedInsights ships INP / LCP / CLS to the Vercel
+// dashboard (replaces the stalled "how do we know if it's slow?" loop with
+// real data, no extra runtime cost in dev).
 
 // Header + footer stay on every page including /onboarding. An earlier
 // revision hid them on focused flows, but the result read as "broken
@@ -53,6 +61,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <SiteHeader />
           <main className="flex-1">{children}</main>
           <SiteFooter />
+          <Analytics />
+          <SpeedInsights />
         </body>
       </html>
     </ClerkProvider>
