@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
+import { checkRateLimit, clientIp } from '@/lib/rate-limit';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { checkWhatsAppVerification, isPlausibleE164 } from '@/lib/verify';
 
@@ -14,6 +15,28 @@ export async function POST(request: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ ok: false, error: 'Not signed in' }, { status: 401 });
+  }
+
+  // Rate-limit check requests too — without this a leaked OTP (or a tighter
+  // numeric brute force: 4-digit codes = 10k combinations) is trivially
+  // automated. Twilio Verify has its own cooldown, but we want to stop the
+  // attempt before it gets there.
+  const ip = clientIp(request.headers);
+  const [userCheck, ipCheck] = await Promise.all([
+    checkRateLimit(`verify-check:user:${userId}`),
+    checkRateLimit(`verify-check:ip:${ip}`),
+  ]);
+  if (!userCheck.success || !ipCheck.success) {
+    const failing = !userCheck.success ? userCheck : ipCheck;
+    return NextResponse.json(
+      { ok: false, error: 'Too many attempts. Try again in a minute.' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(Math.max(1, Math.ceil((failing.reset - Date.now()) / 1000))),
+        },
+      },
+    );
   }
 
   const raw = await request.json().catch(() => null);
