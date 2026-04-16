@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { Github, Mail, Twitter } from 'lucide-react';
-import { FooterAnimation } from './footer-animation';
 
 /**
  * Site footer — one consistent slim row used on every page.
@@ -29,57 +28,53 @@ const MAILTO = `mailto:${CONTACT_EMAIL}`;
 
 export function SiteFooter() {
   return (
-    <footer className="mt-16">
-      {/* Three.js animation — two travellers meeting on a flight path */}
-      <FooterAnimation />
-      <div className="border-t border-oat bg-background px-4 py-5">
-        <div className="container flex flex-wrap items-center justify-between gap-4 text-xs text-muted-foreground">
-          {/* ── Left: wordmark + status pill ───────────────────────────── */}
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/"
-              className="flex items-baseline gap-1.5 font-display text-base font-semibold text-foreground"
-            >
-              <span className="leading-none" aria-hidden>
-                🌼
-              </span>
-              Saathi
-              <span className="text-sm font-normal text-warm-silver">साथी</span>
-            </Link>
+    <footer className="mt-16 border-t border-oat bg-background px-4 py-5">
+      <div className="container flex flex-wrap items-center justify-between gap-4 text-xs text-muted-foreground">
+        {/* ── Left: wordmark + status pill ───────────────────────────── */}
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/"
+            className="flex items-baseline gap-1.5 font-display text-base font-semibold text-foreground"
+          >
+            <span className="leading-none" aria-hidden>
+              🌼
+            </span>
+            Saathi
+            <span className="text-sm font-normal text-warm-silver">साथी</span>
+          </Link>
 
-            <Link
-              href="/status"
-              className="inline-flex items-center gap-1.5 rounded-full border border-matcha-300/60 bg-matcha-300/10 px-2 py-0.5 text-[11px] font-medium text-matcha-800 transition-colors hover:bg-matcha-300/30"
-            >
-              <span className="relative flex size-1.5">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-matcha-600 opacity-70" />
-                <span className="relative inline-flex size-1.5 rounded-full bg-matcha-600" />
-              </span>
-              operational
-            </Link>
+          <Link
+            href="/status"
+            className="inline-flex items-center gap-1.5 rounded-full border border-matcha-300/60 bg-matcha-300/10 px-2 py-0.5 text-[11px] font-medium text-matcha-800 transition-colors hover:bg-matcha-300/30"
+          >
+            <span className="relative flex size-1.5">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-matcha-600 opacity-70" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-matcha-600" />
+            </span>
+            operational
+          </Link>
+        </div>
+
+        {/* ── Middle: link row ───────────────────────────────────────── */}
+        <nav className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <FooterLink href="/about">About</FooterLink>
+          <FooterLink href="/faq">FAQ</FooterLink>
+          <FooterLink href={MAILTO}>Contact</FooterLink>
+          <FooterLink href="/privacy">Privacy</FooterLink>
+          <FooterLink href="/terms">Terms</FooterLink>
+          <FooterLink href={GITHUB_URL} external>
+            GitHub
+          </FooterLink>
+        </nav>
+
+        {/* ── Right: socials + copyright ─────────────────────────────── */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <SocialIcon href={GITHUB_URL} label="GitHub" Icon={Github} external />
+            <SocialIcon href={TWITTER_URL} label="Twitter / X" Icon={Twitter} external />
+            <SocialIcon href={MAILTO} label="Email" Icon={Mail} />
           </div>
-
-          {/* ── Middle: link row ───────────────────────────────────────── */}
-          <nav className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <FooterLink href="/about">About</FooterLink>
-            <FooterLink href="/faq">FAQ</FooterLink>
-            <FooterLink href={MAILTO}>Contact</FooterLink>
-            <FooterLink href="/privacy">Privacy</FooterLink>
-            <FooterLink href="/terms">Terms</FooterLink>
-            <FooterLink href={GITHUB_URL} external>
-              GitHub
-            </FooterLink>
-          </nav>
-
-          {/* ── Right: socials + copyright ─────────────────────────────── */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <SocialIcon href={GITHUB_URL} label="GitHub" Icon={Github} external />
-              <SocialIcon href={TWITTER_URL} label="Twitter / X" Icon={Twitter} external />
-              <SocialIcon href={MAILTO} label="Email" Icon={Mail} />
-            </div>
-            <span className="text-warm-silver">© {new Date().getFullYear()} Saathi</span>
-          </div>
+          <span className="text-warm-silver">© {new Date().getFullYear()} Saathi</span>
         </div>
       </div>
     </footer>
