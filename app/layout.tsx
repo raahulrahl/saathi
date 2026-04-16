@@ -100,13 +100,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             the user makes a choice. The ~100ms delay vs beforeInteractive
             is imperceptible for a consent banner.
           */}
-          <Script
-            id="Cookiebot"
-            src="https://consent.cookiebot.com/uc.js"
-            data-cbid="596afdb9-7000-47cc-8031-2c6d357be0bf"
-            data-blockingmode="auto"
-            strategy="afterInteractive"
-          />
+          {process.env.NODE_ENV === 'production' && (
+            <Script
+              id="Cookiebot"
+              src="https://consent.cookiebot.com/uc.js"
+              data-cbid="596afdb9-7000-47cc-8031-2c6d357be0bf"
+              data-blockingmode="auto"
+              strategy="afterInteractive"
+            />
+          )}
           <SiteHeader />
           <main className="flex-1">{children}</main>
           <SiteFooter />
