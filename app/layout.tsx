@@ -81,6 +81,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider
+      afterSignOutUrl="/"
       appearance={{
         variables: {
           colorPrimary: '#000000',

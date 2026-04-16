@@ -24,6 +24,7 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isValidIata } from '@/lib/iata';
 import { moderateText } from '@/lib/moderation';
+import { findAndNotifyMatches } from '@/lib/notify';
 
 /**
  * A single elderly traveller on a request trip. Each has their own
@@ -142,6 +143,19 @@ export async function createTripAction(input: TripInput) {
       } as const;
     }
   }
+
+  // Fire-and-forget: find existing trips that match this one and notify
+  // their owners. Don't await — trip creation shouldn't block on
+  // notification delivery.
+  findAndNotifyMatches({
+    id: created.id,
+    user_id: userId,
+    kind: p.kind,
+    route: p.route,
+    travel_date: p.travel_date,
+    flight_numbers: p.flight_numbers.filter(Boolean),
+    languages: p.languages,
+  }).catch((err) => console.error('[auto-match] notification failed:', err));
 
   revalidatePath('/dashboard');
   revalidatePath('/search');
