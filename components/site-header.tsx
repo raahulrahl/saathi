@@ -41,6 +41,7 @@ export async function SiteHeader() {
                 <Link href="/dashboard">Dashboard</Link>
               </Button>
               <UserButton
+                afterSignOutUrl="/"
                 appearance={{
                   elements: {
                     avatarBox: 'size-8',
