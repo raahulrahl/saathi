@@ -4,6 +4,7 @@ import { auth } from '@clerk/nextjs/server';
 import { ArrowRight, Calendar, Clock, Plane } from 'lucide-react';
 import { format, formatDistanceToNow, parseISO } from 'date-fns';
 import { FlightComposer } from '@/components/flight-composer';
+import { HeroParticlesWrapper } from '@/components/hero-particles-wrapper';
 import { RotatingWord } from '@/components/rotating-word';
 import { WorldGlobeClient } from '@/components/world-globe-client';
 import { TripCard, type TripCardData } from '@/components/trip-card';
@@ -100,8 +101,10 @@ export default async function LandingPage({ searchParams }: HomeProps) {
           </div>
         </section>
       ) : (
-        <section>
-          <div className="container flex flex-col items-center gap-10 py-16 md:py-20">
+        <section className="relative overflow-hidden">
+          {/* Three.js particle atmosphere — transparent canvas behind the text */}
+          <HeroParticlesWrapper />
+          <div className="container relative z-10 flex flex-col items-center gap-10 py-16 md:py-20">
             <div className="flex max-w-3xl flex-col items-center gap-5 text-center">
               <span className="inline-flex items-center gap-2 rounded-full border border-oat bg-white px-3 py-1 text-xs font-medium text-warm-charcoal">
                 <span className="font-semibold text-marigold-700">साथी</span> · a little community
