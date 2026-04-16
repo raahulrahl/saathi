@@ -2,6 +2,7 @@
 
 import { auth } from '@clerk/nextjs/server';
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -161,5 +162,5 @@ export async function saveOnboardingProfile(
   revalidatePath('/dashboard');
   revalidatePath('/onboarding');
   revalidatePath(`/profile/${userId}`);
-  return { ok: true };
+  redirect('/dashboard?welcome=1');
 }
