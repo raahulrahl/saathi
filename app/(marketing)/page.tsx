@@ -4,6 +4,7 @@ import { auth } from '@clerk/nextjs/server';
 import { ArrowRight, Calendar, Clock, Plane } from 'lucide-react';
 import { format, formatDistanceToNow, parseISO } from 'date-fns';
 import { FlightComposer } from '@/components/flight-composer';
+import { RotatingWord } from '@/components/rotating-word';
 import { WorldGlobeClient } from '@/components/world-globe-client';
 import { TripCard, type TripCardData } from '@/components/trip-card';
 import { EmptyState } from '@/components/empty-state';
@@ -107,7 +108,13 @@ export default async function LandingPage({ searchParams }: HomeProps) {
                 for travel days
               </span>
               <h1 className="max-w-3xl text-balance font-display text-4xl font-semibold leading-[1.1] tracking-[-0.02em] text-foreground md:text-5xl lg:text-[56px]">
-                Find someone kind on <span className="text-marigold-700">Ma&rsquo;s</span> flight.
+                Find someone kind on{' '}
+                <RotatingWord
+                  words={["Ma's", "father's", "wife's", "husband's", "Dadi's", "your loved one's"]}
+                  interval={2500}
+                  className="text-marigold-700"
+                />{' '}
+                flight.
               </h1>
               <p className="max-w-2xl text-balance text-lg leading-relaxed text-warm-charcoal">
                 Saathi is a small community of travellers who look out for each other&rsquo;s loved

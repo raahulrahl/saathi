@@ -39,18 +39,19 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
   await syncClerkUserToSupabase(userId);
 
   const supabase = await createSupabaseServerClient();
-  // Belt-and-braces: even if Clerk's AFTER_SIGN_IN_URL still points here
-  // (env var hasn't been reloaded, legacy session, etc.), a returning user
-  // who already has a role shouldn't be stuck on the onboarding form.
-  // They can still land here explicitly via ?edit=1 from the dashboard to
-  // update their profile.
-  const { data: roleCheck } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', userId)
-    .maybeSingle();
-  if (roleCheck?.role && edit !== '1') {
-    redirect('/dashboard');
+  // Belt-and-braces: if a returning user lands here (stale env var,
+  // legacy Clerk session, direct URL), check whether they've already
+  // completed onboarding by looking at profile_languages — those rows
+  // are ONLY written by the onboarding server action.
+  // ?edit=1 from dashboard bypasses this so profile editing still works.
+  if (edit !== '1') {
+    const { count } = await supabase
+      .from('profile_languages')
+      .select('language', { count: 'exact', head: true })
+      .eq('profile_id', userId);
+    if (count && count > 0) {
+      redirect('/dashboard');
+    }
   }
   // Profile + languages come from two tables now (normalised join).
   // Run both reads in parallel — they don't depend on each other and

@@ -9,35 +9,30 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
  * Clerk sends everyone here after sign-in / sign-up. This page decides
  * where they actually belong based on profile completeness:
  *
- *   - No `profile.role` yet → first-time user, send to /onboarding.
- *   - role already set       → returning user, send to /dashboard.
+ *   - No languages saved yet → first-time user, send to /onboarding.
+ *   - Languages exist        → returning user, send to /dashboard.
  *
- * Why this indirection: Clerk only supports a single AFTER_SIGN_IN_URL
- * env var, with no native "has-onboarded" branching. Without this page,
- * returning users land on /onboarding every login and have to re-save
- * the same form or click away — bad muscle memory and confusing.
- *
- * The page renders nothing — it always redirects. Server component with
- * zero UI means there's no flicker between routes.
+ * Why `profile_languages` and not `profile.role`? The Clerk self-heal
+ * (`syncClerkUserToSupabase`) creates a profile row with `role:
+ * 'companion'` as a NOT NULL default on every sign-up. That means
+ * `role` is always set — even before the user fills the onboarding
+ * form. Languages, on the other hand, are ONLY inserted by the
+ * onboarding form's server action (`min(1)` enforced). Zero language
+ * rows = hasn't onboarded.
  */
 export default async function PostAuthPage() {
   const userId = await requireUserId('/post-auth');
 
-  // Self-heal: ensure a profile row exists so the role check below is valid.
-  // This mirrors what /onboarding does on load, so brand-new users who are
-  // about to be sent there don't need that page to do it redundantly.
+  // Self-heal: ensure a profile row exists.
   await syncClerkUserToSupabase(userId);
 
   const supabase = await createSupabaseServerClient();
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', userId)
-    .maybeSingle();
+  const { count } = await supabase
+    .from('profile_languages')
+    .select('language', { count: 'exact', head: true })
+    .eq('profile_id', userId);
 
-  // `role` is the canonical "has finished onboarding" signal — the
-  // onboarding form requires it, and it's only set after submit.
-  if (!profile?.role) {
+  if (!count || count === 0) {
     redirect('/onboarding');
   }
 
