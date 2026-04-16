@@ -90,23 +90,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       }}
     >
       <html lang="en" className={`${display.variable} ${mono.variable}`}>
-        <head>
+        <body className="flex min-h-screen flex-col bg-background font-sans text-foreground antialiased">
           {/*
-            Cookiebot consent banner. Must load before any other tracking so
-            `data-blockingmode="auto"` can scan and block non-consented scripts
-            (Analytics, PostHog, etc.) until the user has made a choice.
-            `beforeInteractive` injects this into <head> before the app
-            hydrates, which is Cookiebot's required placement.
+            Cookiebot consent banner. `afterInteractive` (default) avoids the
+            hydration mismatch that `beforeInteractive` + <head> causes in
+            App Router — the server renders the script tag differently than
+            the client expects. Cookiebot's auto-blocking mode still works:
+            it scans the page on load and holds non-consented scripts until
+            the user makes a choice. The ~100ms delay vs beforeInteractive
+            is imperceptible for a consent banner.
           */}
           <Script
             id="Cookiebot"
             src="https://consent.cookiebot.com/uc.js"
             data-cbid="596afdb9-7000-47cc-8031-2c6d357be0bf"
             data-blockingmode="auto"
-            strategy="beforeInteractive"
+            strategy="afterInteractive"
           />
-        </head>
-        <body className="flex min-h-screen flex-col bg-background font-sans text-foreground antialiased">
           <SiteHeader />
           <main className="flex-1">{children}</main>
           <SiteFooter />
