@@ -103,8 +103,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   // Shape raw match_requests into IncomingRequest[] — hydrate `trip` from
   // the already-fetched myTripRows rather than re-embedding.
   const tripById = new Map(myTripRows.map((t) => [t.id, t]));
+  // PostgREST's inferred TS type for a to-one embed returns an array,
+  // but the runtime value is a single object. Cast through unknown so TS
+  // doesn't complain about the shape mismatch.
   const incomingRows: IncomingRequest[] = (
-    (incomingRaw.data ?? []) as Array<{
+    (incomingRaw.data ?? []) as unknown as Array<{
       id: string;
       trip_id: string;
       intro_message: string | null;

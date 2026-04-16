@@ -248,26 +248,32 @@ async function WorldGlobeSection() {
     routes.push([from, to]);
   }
 
-  // Don't show the globe at all if there's nothing to draw — looks
-  // sad and empty. Marquee + closing CTA cover the page below.
-  if (routes.length === 0) return null;
-
   return (
     <section className="overflow-hidden border-y border-oat bg-gradient-to-b from-cream via-oat-light/30 to-cream">
       <div className="container grid items-center gap-10 py-16 md:grid-cols-[1fr_minmax(320px,440px)] md:py-20">
         <div className="max-w-md">
-          <p className="clay-label">Right now, on Saathi</p>
+          <p className="clay-label">
+            {routes.length > 0 ? 'Right now, on Saathi' : 'The world is waiting'}
+          </p>
           <h2 className="mt-2 font-serif text-3xl font-semibold leading-tight md:text-4xl">
-            {routes.length} live route{routes.length === 1 ? '' : 's'} across the world.
+            {routes.length > 0 ? (
+              <>
+                {routes.length} live route{routes.length === 1 ? '' : 's'} across the world.
+              </>
+            ) : (
+              <>Be the first to draw an arc on this globe.</>
+            )}
           </h2>
           <p className="mt-3 text-base text-warm-charcoal">
-            Each arc is an open trip. Drag the globe — you might see your route already there.
+            {routes.length > 0
+              ? 'Each arc is an open trip. Drag the globe — you might see your route already there.'
+              : 'Post a trip and your route lights up for every family searching. It takes a minute.'}
           </p>
           <Link
             href="/dashboard/new/request"
             className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-marigold-700 underline-offset-4 hover:underline"
           >
-            Add yours
+            {routes.length > 0 ? 'Add yours' : 'Post the first trip'}
             <ArrowRight className="size-4" />
           </Link>
         </div>
@@ -328,7 +334,34 @@ async function DiscoveryPanels() {
     });
 
   const hasAnyData = topRoutes.length > 0 || recent.length > 0;
-  if (!hasAnyData) return null;
+
+  // When the DB is cold (zero trips), show an inviting empty state
+  // instead of vanishing — a blank page between hero and marquee
+  // reads as broken, not "early product."
+  if (!hasAnyData) {
+    return (
+      <section className="container max-w-3xl py-16 text-center">
+        <div className="rounded-3xl border border-dashed border-oat bg-gradient-to-b from-cream to-oat-light/30 p-10">
+          <div className="mb-4 text-4xl" aria-hidden>
+            🌼
+          </div>
+          <h2 className="font-serif text-2xl">No trips posted yet — you could be the first.</h2>
+          <p className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground">
+            Flying somewhere? Post an offer so a family can find you. Sending a loved one? Post a
+            request so someone kind on the same flight can keep them company.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <Button asChild variant="lemon">
+              <Link href="/dashboard/new/offer">Offer to help</Link>
+            </Button>
+            <Button asChild variant="slushie">
+              <Link href="/dashboard/new/request">Post a request</Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="container max-w-5xl space-y-16 py-12">
