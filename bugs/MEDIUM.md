@@ -171,6 +171,8 @@ mirroring the check in `messages: participants send`.
 
 ## M08 — Trip rollback is not transactional
 
+**Status:** ✅ FIXED in [supabase/migrations/0022_create_trip_rpc.sql](../supabase/migrations/0022_create_trip_rpc.sql) + [app/post/actions.ts](../app/post/actions.ts) (2026-04-18). The trip insert and traveller inserts now happen inside a single `create_trip_with_travellers` Postgres function — one transaction, atomic. The `trip_legs_sync` trigger fires inside the same transaction, so legs also roll back on failure. No more naive DELETE rollback path to leave ghost trip rows. Content below preserved for history.
+
 **File:** [app/post/actions.ts:134-144](../app/post/actions.ts)
 
 When the traveller insert fails, the code issues a plain `delete` on the

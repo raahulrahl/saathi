@@ -148,54 +148,36 @@ export async function createTripAction(input: TripInput) {
     if (mod.flagged) return { ok: false, error: 'Please revise your notes.' } as const;
   }
 
-  const insertRow = {
-    user_id: userId,
-    kind: p.kind,
-    route: p.route,
-    travel_date: p.travel_date,
-    airline: p.airline || null,
-    flight_numbers: p.flight_numbers.filter(Boolean),
-    languages: p.languages,
-    gender_preference: p.gender_preference,
-    help_categories: p.help_categories,
-    thank_you_eur: p.kind === 'request' ? (p.thank_you_eur ?? null) : null,
-    notes: p.notes || null,
-  } satisfies Record<string, unknown>;
+  // Single-transaction insert: the rpc wraps the trips insert and the
+  // trip_travellers inserts in one Postgres function, so either both
+  // tables have their rows or neither does. Replaces the previous
+  // two-step insert + naive DELETE rollback (bug M08), which could
+  // leak ghost trip rows if the DELETE itself failed.
+  const travellersForRpc =
+    p.kind === 'request'
+      ? p.travellers.map((t) => ({
+          first_name: t.first_name ?? '',
+          age_band: t.age_band ?? '',
+          medical_notes: t.medical_notes ?? '',
+        }))
+      : [];
 
-  const { data: created, error } = await supabase
-    .from('trips')
-    .insert(insertRow)
-    .select('id')
-    .single();
+  const { data: newTripId, error } = await supabase.rpc('create_trip_with_travellers', {
+    p_kind: p.kind,
+    p_route: p.route,
+    p_travel_date: p.travel_date,
+    p_airline: p.airline || null,
+    p_flight_numbers: p.flight_numbers.filter(Boolean),
+    p_languages: p.languages,
+    p_gender_preference: p.gender_preference,
+    p_help_categories: p.help_categories,
+    p_thank_you_eur: p.kind === 'request' ? (p.thank_you_eur ?? null) : null,
+    p_notes: p.notes || null,
+    p_travellers: travellersForRpc,
+  });
 
-  if (error || !created) {
+  if (error || !newTripId) {
     return { ok: false, error: error?.message ?? 'Could not create trip.' } as const;
-  }
-
-  // Insert any traveller rows for a request trip. Offers always skip this —
-  // the schema strips the array client-side for offer flows, but we
-  // double-check here so a tampered payload can't attach travellers to an
-  // offer.
-  if (p.kind === 'request' && p.travellers.length > 0) {
-    const travellerRows = p.travellers.map((t, i) => ({
-      trip_id: created.id,
-      first_name: t.first_name || null,
-      age_band: t.age_band ?? null,
-      medical_notes: t.medical_notes || null,
-      sort_order: i,
-    }));
-
-    const { error: travellerError } = await supabase.from('trip_travellers').insert(travellerRows);
-
-    if (travellerError) {
-      // Roll back the trip insert so we don't leave a half-written
-      // request visible on /search without any traveller info.
-      await supabase.from('trips').delete().eq('id', created.id);
-      return {
-        ok: false,
-        error: travellerError.message ?? 'Could not save traveller details.',
-      } as const;
-    }
   }
 
   // Enqueue notifications synchronously — this just writes rows to the
@@ -207,7 +189,7 @@ export async function createTripAction(input: TripInput) {
   // Vercel can get killed when the container freezes. See bug M03.
   try {
     await enqueueMatchNotifications({
-      id: created.id,
+      id: newTripId,
       user_id: userId,
       kind: p.kind,
       route: p.route,
@@ -236,5 +218,5 @@ export async function createTripAction(input: TripInput) {
 
   revalidatePath('/dashboard');
   revalidatePath('/search');
-  redirect(`/trip/${created.id}?new=true`);
+  redirect(`/trip/${newTripId}?new=true`);
 }
