@@ -31,8 +31,19 @@ import type { PendingNotificationPayload, PendingNotificationsRow } from '@/type
  *     after 5 attempts (enforced in the claim rpc).
  */
 
-/** Don't spam a recipient more often than this. */
-const COOLDOWN_MINUTES = 10;
+/**
+ * Minimum gap between digest emails to the same recipient. One email
+ * per day keeps the inbox respectful — a user whose route collects 20
+ * matches over the course of a day gets a single digest listing all
+ * of them, not 20 separate emails. First-ever notification for a
+ * recipient (`last_notified_at IS NULL`) bypasses this gate and sends
+ * immediately; only repeats wait.
+ *
+ * Tradeoff: time-sensitive trips (posted <24 h before travel) may
+ * land in the next day's digest rather than firing immediately. Add
+ * an urgency bypass here if that becomes a real user complaint.
+ */
+const COOLDOWN_MINUTES = 24 * 60;
 
 /** How many pending rows to claim per wake-up. */
 const BATCH_SIZE = 100;
@@ -151,10 +162,18 @@ export async function dispatchPendingNotifications(
       result.skipped += 1;
     }
 
-    // 5b. Defer — push next_attempt_at past the cooldown window. Keeps
-    // them in the queue for a future dispatch cycle.
+    // 5b. Defer — push next_attempt_at to the moment this recipient's
+    // cooldown lifts, not a blanket cooldown-from-now. A recipient
+    // whose last_notified_at was 23 h ago should wake this row in 1 h,
+    // not 24 h. Falls back to a full cooldown if last_notified_at is
+    // missing (shouldn't happen — we only defer when it's set — but
+    // defensive).
+    const lastNotifiedAt = recipient?.last_notified_at;
+    const wakeAt = lastNotifiedAt
+      ? new Date(new Date(lastNotifiedAt).getTime() + COOLDOWN_MINUTES * 60_000)
+      : new Date(Date.now() + COOLDOWN_MINUTES * 60_000);
     for (const row of deferRows) {
-      await markDeferred(supabase, row, COOLDOWN_MINUTES);
+      await markDeferredUntil(supabase, row, wakeAt);
       result.deferred += 1;
     }
 
@@ -196,11 +215,9 @@ export async function dispatchPendingNotifications(
     // 5d. WhatsApp rows — not batched yet. Intentionally unhandled in
     // this cycle; will be caught when the WhatsApp digest template ships.
     const whatsappRows = list.filter((r) => r._bucket === 'send' && r.channel === 'whatsapp');
+    const whatsappWakeAt = new Date(Date.now() + 60_000); // defer by 1 min
     for (const row of whatsappRows) {
-      // Keep them for a later pass by deferring a minute — so we don't
-      // leave them in in_flight forever. Revisit when WhatsApp dispatch
-      // lands.
-      await markDeferred(supabase, row, 1);
+      await markDeferredUntil(supabase, row, whatsappWakeAt);
       result.deferred += 1;
     }
   }
@@ -221,21 +238,22 @@ async function markSkipped(
     .eq('id', row.id);
 }
 
-async function markDeferred(
+async function markDeferredUntil(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   row: PendingNotificationsRow,
-  delayMinutes: number,
+  wakeAt: Date,
 ) {
-  // Push next_attempt_at past the cooldown. Reset status to 'pending'
-  // so the next claim cycle picks it up. Don't count the deferral as a
-  // failed attempt — the row's fine, it just arrived too soon.
+  // Push next_attempt_at to an explicit wake time. Reset status to
+  // 'pending' so the next claim cycle picks it up. Don't count the
+  // deferral as a failed attempt — the row's fine, it just arrived
+  // inside another recipient's cooldown.
   await supabase
     .from('pending_notifications')
     .update({
       status: 'pending',
       attempts: Math.max(0, row.attempts - 1),
-      next_attempt_at: new Date(Date.now() + delayMinutes * 60_000).toISOString(),
+      next_attempt_at: wakeAt.toISOString(),
     })
     .eq('id', row.id);
 }
