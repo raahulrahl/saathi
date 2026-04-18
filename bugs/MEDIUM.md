@@ -53,6 +53,8 @@ Store canonical form. Delete `normaliseFlight` once storage is clean.
 
 ## M03 — Auto-match + notify is fire-and-forget inside a redirecting Server Action
 
+**Status:** ✅ FIXED in [supabase/migrations/0017_notification_queue.sql](../supabase/migrations/0017_notification_queue.sql) + [lib/notifications/](../lib/notifications/) + [app/post/actions.ts](../app/post/actions.ts) + [app/api/cron/send-notifications/route.ts](../app/api/cron/send-notifications/route.ts) + [vercel.json](../vercel.json) (2026-04-18). Durable queue with atomic claim-via-SKIP-LOCKED, per-recipient cooldown, aggregation into digest emails, retries with exponential backoff. Content below preserved for history.
+
 **File:** [app/post/actions.ts:150-158](../app/post/actions.ts)
 
 ```ts
@@ -81,7 +83,9 @@ Gives you retries + idempotency.
 
 ## M04 — No notification dedupe
 
-**File:** [lib/notify.ts:99-165](../lib/notify.ts)
+**Status:** ✅ FIXED in [supabase/migrations/0017_notification_queue.sql](../supabase/migrations/0017_notification_queue.sql) — dedupe is enforced at the schema level via `UNIQUE (new_trip_id, recipient_user_id, channel)` on `pending_notifications` with `ON CONFLICT DO NOTHING` at the insert site. Content below preserved for history.
+
+**File:** ~~lib/notify.ts~~ (now lib/notifications/enqueue.ts)
 
 Nothing records "user X was notified about trip Y." If the Server
 Action re-runs (transient network error at redirect time), or the user

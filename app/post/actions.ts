@@ -21,11 +21,13 @@
 import { auth } from '@clerk/nextjs/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { after } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isValidIata } from '@/lib/iata';
 import { moderateText } from '@/lib/moderation';
-import { findAndNotifyMatches } from '@/lib/notify';
+import { enqueueMatchNotifications } from '@/lib/notifications/enqueue';
+import { dispatchPendingNotifications } from '@/lib/notifications/dispatch';
 
 /**
  * A single traveller on a request trip — the person being helped.
@@ -147,18 +149,41 @@ export async function createTripAction(input: TripInput) {
     }
   }
 
-  // Fire-and-forget: find existing trips that match this one and notify
-  // their owners. Don't await — trip creation shouldn't block on
-  // notification delivery.
-  findAndNotifyMatches({
-    id: created.id,
-    user_id: userId,
-    kind: p.kind,
-    route: p.route,
-    travel_date: p.travel_date,
-    flight_numbers: p.flight_numbers.filter(Boolean),
-    languages: p.languages,
-  }).catch((err) => console.error('[auto-match] notification failed:', err));
+  // Enqueue notifications synchronously — this just writes rows to the
+  // pending_notifications table, so it's cheap (<200 ms typical). The
+  // actual send happens asynchronously via the dispatch worker.
+  //
+  // Doing the enqueue inside the Server Action (rather than after the
+  // redirect) guarantees the rows land — fire-and-forget promises on
+  // Vercel can get killed when the container freezes. See bug M03.
+  try {
+    await enqueueMatchNotifications({
+      id: created.id,
+      user_id: userId,
+      kind: p.kind,
+      route: p.route,
+      travel_date: p.travel_date,
+      flight_numbers: p.flight_numbers.filter(Boolean),
+      languages: p.languages,
+    });
+  } catch (err) {
+    // Enqueue shouldn't fail in normal operation, but if it does we
+    // still want the trip to post successfully — the 1-minute cron
+    // won't discover these matches, but nothing corrupted.
+    console.error('[auto-match] enqueue failed:', err);
+  }
+
+  // Best-effort immediate dispatch. `after()` runs after the response is
+  // sent but Vercel keeps the function alive for it, so we don't repeat
+  // the fire-and-forget-gets-killed problem. If this drops (e.g. platform
+  // without `after()` support), the 1-minute cron drains the backlog.
+  after(async () => {
+    try {
+      await dispatchPendingNotifications(50);
+    } catch (err) {
+      console.error('[auto-match] immediate dispatch failed:', err);
+    }
+  });
 
   revalidatePath('/dashboard');
   revalidatePath('/search');

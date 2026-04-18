@@ -39,6 +39,72 @@ export interface MatchNotificationData {
 }
 
 /**
+ * Send a digest email summarising one or more new matches for the
+ * same recipient. Collapses a burst of N pending notifications into
+ * a single email so a user whose route just got 12 companions doesn't
+ * get 12 emails in the same minute.
+ *
+ * One-match case renders identically to the old single-match email;
+ * N-match case uses a bulleted list. Returns true on success, false
+ * on any error.
+ */
+export async function sendMatchDigestEmail(
+  to: string,
+  matches: readonly MatchNotificationData[],
+): Promise<boolean> {
+  if (matches.length === 0) return false;
+  if (matches.length === 1) {
+    return sendMatchNotificationEmail(to, matches[0]!);
+  }
+
+  const client = getResend();
+  if (!client) {
+    console.warn('[email] RESEND_API_KEY not set — skipping match digest email');
+    return false;
+  }
+
+  // Subject mentions the strongest signal: count + a representative route.
+  const primary = matches[0]!;
+  const subject = `${matches.length} new trips match your Saathi flight (${primary.routeLabel})`;
+
+  const lines: Array<string | null> = [`Hi,`, ``, `Here's what's new on your routes:`, ``];
+
+  for (const m of matches) {
+    const verb =
+      m.newTripKind === 'request'
+        ? `${m.posterName} needs a companion`
+        : `${m.posterName} can help`;
+    lines.push(
+      `• ${verb} on ${m.routeLabel}, ${m.travelDate}` +
+        (m.flightNumbers.length > 0 ? ` (${m.flightNumbers.join(', ')})` : '') +
+        ` — ${m.tripUrl}`,
+    );
+  }
+
+  lines.push(``, `— Saathi`);
+
+  const body = lines.filter((line) => line !== null).join('\n');
+
+  try {
+    const { error } = await client.emails.send({
+      from: FROM,
+      to,
+      subject,
+      text: body,
+    });
+    if (error) {
+      console.error('[email] digest Resend error:', error);
+      return false;
+    }
+    console.log(`[email] digest (${matches.length}) sent to ${to}`);
+    return true;
+  } catch (err) {
+    console.error('[email] digest failed to send:', err);
+    return false;
+  }
+}
+
+/**
  * Send a "someone matched your flight" email.
  *
  * Returns true if the email was sent (or skipped in dev), false on error.

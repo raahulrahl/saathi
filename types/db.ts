@@ -30,6 +30,7 @@ export interface ProfilesRow {
   primary_language: string;
   gender: string | null;
   created_at: string;
+  last_notified_at: string | null;
 }
 
 export interface VerificationsRow {
@@ -77,6 +78,37 @@ export interface TripLegsRow {
   travel_date: string;
   flight_number: string | null;
   created_at: string;
+}
+
+export type PendingNotificationChannel = 'email' | 'whatsapp';
+export type PendingNotificationStatus =
+  | 'pending'
+  | 'in_flight'
+  | 'sent'
+  | 'failed'
+  | 'skipped';
+
+export interface PendingNotificationPayload {
+  posterName: string;
+  newTripKind: TripKind;
+  routeLabel: string;
+  travelDate: string;
+  flightNumbers: string[];
+  tripUrl: string;
+}
+
+export interface PendingNotificationsRow {
+  id: string;
+  new_trip_id: string;
+  recipient_user_id: string;
+  channel: PendingNotificationChannel;
+  payload: PendingNotificationPayload;
+  status: PendingNotificationStatus;
+  attempts: number;
+  next_attempt_at: string;
+  last_error: string | null;
+  created_at: string;
+  sent_at: string | null;
 }
 
 export interface MatchRequestsRow {
@@ -285,6 +317,21 @@ export interface Database {
         Row: TripLegsRow;
         Insert: InsertOf<TripLegsRow, 'id' | 'created_at'>;
         Update: UpdateOf<TripLegsRow>;
+        Relationships: [];
+      };
+      pending_notifications: {
+        Row: PendingNotificationsRow;
+        Insert: InsertOf<
+          PendingNotificationsRow,
+          | 'id'
+          | 'status'
+          | 'attempts'
+          | 'next_attempt_at'
+          | 'last_error'
+          | 'created_at'
+          | 'sent_at'
+        >;
+        Update: UpdateOf<PendingNotificationsRow>;
         Relationships: [];
       };
     };
