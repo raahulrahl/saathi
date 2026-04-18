@@ -215,3 +215,7 @@ Apache License 2.0 — see [LICENSE](LICENSE) for the full text. Use, modify, an
 **Saathi (साथी)** in Hindi, Bengali, Marathi, Punjabi, and several other Indian languages means _companion_, _partner_, _friend on the journey_. It's the word a parent might use for the person who walks them through a confusing terminal.
 
 That's the whole product.
+
+_Built for the daughter who can't sleep until her mother's text comes through. For the student on the same plane who would have helped, had anyone asked. Saathi just makes the introduction — and then gets out of the way._
+
+_साथी मिल गया। घर पहुँच गए। ❤️_
