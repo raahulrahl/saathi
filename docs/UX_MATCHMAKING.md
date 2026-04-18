@@ -20,8 +20,9 @@ The same card DNA renders on both sides — only the subject changes.
 
 Three properties of Saathi break the Tinder model:
 
-1. **Asymmetric stakes.** A family is entrusting a stranger with their
-   elderly parent. A companion is volunteering a few hours of airport
+1. **Asymmetric stakes.** A family is entrusting a stranger with
+   someone they love — an elderly parent, a pregnant sibling, a
+   first-time flyer. A companion is volunteering a few hours of airport
    time. Treating these as symmetric swipes misreads the emotional
    weight on the family side.
 2. **Sparse supply.** Tinder works because supply is abundant — swipe
@@ -159,7 +160,7 @@ Entry point from the dashboard: _"4 families near you need a
 companion →"_. Route to `/browse` (the directory already exists).
 
 Same card shape, mirrored content. The subject is **the flight**, not
-the family; the elder PII stays behind the match-gate.
+the family; the traveller's PII stays behind the match-gate.
 
 ### Page layout
 
@@ -188,19 +189,19 @@ the family; the elder PII stays behind the match-gate.
 
 ### Card content deltas from family side
 
-| Field              | Family card shows…       | Companion card shows…       |
-| ------------------ | ------------------------ | --------------------------- |
-| Primary subject    | Companion name + photo   | Flight number + route       |
-| Identity reveal    | Companion first name     | Family first name only      |
-| Elder info         | (n/a — their own parent) | "One traveller, age 70-80"  |
-| No photos of elder |                          | Not shown at all pre-match  |
-| Language line      | Companion's languages    | Family's languages          |
-| Needs              | (composed in modal)      | Pre-written help_categories |
-| CTA                | "Send a message"         | "Offer to help"             |
+| Field               | Family card shows…         | Companion card shows…       |
+| ------------------- | -------------------------- | --------------------------- |
+| Primary subject     | Companion name + photo     | Flight number + route       |
+| Identity reveal     | Companion first name       | Family first name only      |
+| Traveller info      | (n/a — their own relative) | "One traveller, age 70-80"  |
+| No traveller photos |                            | Not shown at all pre-match  |
+| Language line       | Companion's languages      | Family's languages          |
+| Needs               | (composed in modal)        | Pre-written help_categories |
+| CTA                 | "Send a message"           | "Offer to help"             |
 
-The companion never sees the elder's name, photo, or medical notes
-until the family accepts. `trip_elders` RLS enforces this at the DB
-layer (once [bugs/01-trip-elders-rls.md](../bugs/01-trip-elders-rls.md)
+The companion never sees the traveller's name, photo, or private notes
+until the family accepts. `trip_travellers` RLS enforces this at the DB
+layer (once [bugs/01-trip-travellers-rls.md](../bugs/01-trip-travellers-rls.md)
 lands).
 
 ### Empty state
@@ -296,7 +297,7 @@ derivable.)
 
 Same component, same shape, different pre-fill strategy:
 
-- Family → pre-fills elder's first name + needs. Companion checkboxes
+- Family → pre-fills traveller's first name + needs. Companion checkboxes
   are the family's **requested** help categories.
 - Companion → pre-fills companion's own name + languages. Checkboxes
   are the companion's **offered** subset of the family's requested set.
@@ -304,7 +305,7 @@ Same component, same shape, different pre-fill strategy:
 ### What does NOT go on a card
 
 - Full name. First-name-only until the match is accepted.
-- Elder photo. Never pre-match, never anon-visible.
+- Traveller photo. Never pre-match, never anon-visible.
 - Phone number / WhatsApp / email. Unlocked post-match on `/match/:id`.
 - Review text (only ★ avg + count). Full reviews on the profile page.
 - Exact age. Age bands only.
@@ -337,7 +338,7 @@ Flag these explicitly so the builder doesn't pick silently:
 ## Not in this doc
 
 - The match page itself (`/match/:id`). Out of scope — already partially
-  built and has its own bugs (see [bugs/01-trip-elders-rls.md](../bugs/01-trip-elders-rls.md)).
+  built and has its own bugs (see [bugs/01-trip-travellers-rls.md](../bugs/01-trip-travellers-rls.md)).
 - Post-wizard UX (how users create a trip). Out of scope.
 - Notifications. See [bugs/MEDIUM.md](../bugs/MEDIUM.md) M03, M04.
 - Admin / moderation. Out of scope.

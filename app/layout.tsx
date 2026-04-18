@@ -47,7 +47,7 @@ export const metadata: Metadata = {
     template: '%s · Saathi',
   },
   description:
-    'Saathi pairs elderly travellers with solo travellers already flying the same route, so no parent has to navigate an unfamiliar airport alone.',
+    'Saathi pairs travellers who need a hand — an elderly parent, a pregnant sibling, a first-time flyer — with people already on the same flight who can keep them company through security, transfers, and arrival.',
   applicationName: 'Saathi',
   metadataBase: new URL(siteUrl()),
   // Prevent search engines from de-duplicating www vs apex into the wrong

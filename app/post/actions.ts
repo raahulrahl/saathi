@@ -28,11 +28,13 @@ import { moderateText } from '@/lib/moderation';
 import { findAndNotifyMatches } from '@/lib/notify';
 
 /**
- * A single elderly traveller on a request trip. Each has their own
- * first name, age band, and medical notes — sort order preserves the
- * user's entry sequence on the form.
+ * A single traveller on a request trip — the person being helped.
+ * Could be elderly, pregnant, first-time flying, unfamiliar with the
+ * language, or anyone else who wants a companion on the flight. Each
+ * has their own first name, age band, and notes — sort order preserves
+ * the user's entry sequence on the form.
  */
-const ElderSchema = z.object({
+const TravellerSchema = z.object({
   first_name: z.string().max(60).optional().default(''),
   age_band: z.enum(['60-70', '70-80', '80+']).optional().nullable(),
   medical_notes: z.string().max(1000).optional().default(''),
@@ -51,12 +53,12 @@ const TripSchema = z
     thank_you_eur: z.number().int().min(0).max(500).optional().nullable(),
     notes: z.string().max(2000).optional().default(''),
     /**
-     * Array of elderly travellers. Only applies to kind='request'; the
-     * server strips this for offers. Minimum zero, maximum four (we
+     * Array of travellers being helped. Only applies to kind='request';
+     * the server strips this for offers. Minimum zero, maximum four (we
      * don't expect a family group of five+ on one flight in practice —
      * raise the cap when a real user hits it).
      */
-    elders: z.array(ElderSchema).max(4).optional().default([]),
+    travellers: z.array(TravellerSchema).max(4).optional().default([]),
   })
   .superRefine((v, ctx) => {
     if (!v.route.every(isValidIata)) {
@@ -76,7 +78,7 @@ const TripSchema = z
   });
 
 export type TripInput = z.infer<typeof TripSchema>;
-export type ElderInput = z.infer<typeof ElderSchema>;
+export type TravellerInput = z.infer<typeof TravellerSchema>;
 
 export async function createTripAction(input: TripInput) {
   const parsed = TripSchema.safeParse(input);
@@ -119,28 +121,28 @@ export async function createTripAction(input: TripInput) {
     return { ok: false, error: error?.message ?? 'Could not create trip.' } as const;
   }
 
-  // Insert any elder rows for a request trip. Offers always skip this —
+  // Insert any traveller rows for a request trip. Offers always skip this —
   // the schema strips the array client-side for offer flows, but we
-  // double-check here so a tampered payload can't attach elders to an
+  // double-check here so a tampered payload can't attach travellers to an
   // offer.
-  if (p.kind === 'request' && p.elders.length > 0) {
-    const elderRows = p.elders.map((e, i) => ({
+  if (p.kind === 'request' && p.travellers.length > 0) {
+    const travellerRows = p.travellers.map((t, i) => ({
       trip_id: created.id,
-      first_name: e.first_name || null,
-      age_band: e.age_band ?? null,
-      medical_notes: e.medical_notes || null,
+      first_name: t.first_name || null,
+      age_band: t.age_band ?? null,
+      medical_notes: t.medical_notes || null,
       sort_order: i,
     }));
 
-    const { error: elderError } = await supabase.from('trip_elders').insert(elderRows);
+    const { error: travellerError } = await supabase.from('trip_travellers').insert(travellerRows);
 
-    if (elderError) {
+    if (travellerError) {
       // Roll back the trip insert so we don't leave a half-written
-      // request visible on /search without any parent info.
+      // request visible on /search without any traveller info.
       await supabase.from('trips').delete().eq('id', created.id);
       return {
         ok: false,
-        error: elderError.message ?? 'Could not save parent details.',
+        error: travellerError.message ?? 'Could not save traveller details.',
       } as const;
     }
   }

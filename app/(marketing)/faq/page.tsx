@@ -30,11 +30,11 @@ const SECTIONS: Section[] = [
     entries: [
       {
         q: 'What is Saathi, in one sentence?',
-        a: 'A free introduction service that matches families sending an elderly loved one on a flight with travellers already on that flight who can keep them company through security, transfers, and arrival.',
+        a: 'A free introduction service that matches families sending a loved one on a flight with travellers already on that flight who can keep them company through security, transfers, and arrival.',
       },
       {
         q: 'Who is Saathi for?',
-        a: 'Anyone sending an older relative — parent, spouse, sibling, in-law, friend — on an international flight they might find overwhelming, and anyone already flying who would gladly help someone on their plane.',
+        a: 'Anyone sending a relative or friend on an international flight they might find overwhelming — an older parent, a pregnant sibling, a first-time flyer, someone who doesn\u2019t speak the airport\u2019s language — and anyone already flying who would gladly help someone on their plane.',
       },
       {
         q: 'Is it free to sign up?',

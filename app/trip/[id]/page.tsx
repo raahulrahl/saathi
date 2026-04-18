@@ -170,32 +170,32 @@ export default async function TripPage({ params, searchParams }: TripPageProps) 
             ) : null}
           </div>
 
-          {isRequest && trip.elder_count > 0 ? (
+          {isRequest && trip.traveller_count > 0 ? (
             <Card>
               <CardContent className="space-y-3 p-5">
                 <h2 className="font-serif text-lg">
-                  {trip.elder_count === 1
+                  {trip.traveller_count === 1
                     ? 'About the traveller'
-                    : `${trip.elder_count} travellers on this flight`}
+                    : `${trip.traveller_count} travellers on this flight`}
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  {trip.elder_count === 1 ? (
+                  {trip.traveller_count === 1 ? (
                     <>
-                      Age band <b>{trip.elder_age_bands[0] ?? '—'}</b>.
+                      Age band <b>{trip.traveller_age_bands[0] ?? '—'}</b>.
                     </>
                   ) : (
                     <>
                       Age bands:{' '}
-                      {trip.elder_age_bands.map((b: string, i: number) => (
+                      {trip.traveller_age_bands.map((b: string, i: number) => (
                         <span key={i}>
                           <b>{b}</b>
-                          {i < trip.elder_age_bands.length - 1 ? ', ' : ''}
+                          {i < trip.traveller_age_bands.length - 1 ? ', ' : ''}
                         </span>
                       ))}
                       .
                     </>
                   )}{' '}
-                  Names and any medical notes stay hidden until the request is accepted.
+                  Names and any notes stay hidden until the request is accepted.
                 </p>
               </CardContent>
             </Card>

@@ -4,7 +4,7 @@
 
 **साथी** — _companion_
 
-A matchmaking platform pairing elderly travellers with people already flying the same route, so no parent navigates an unfamiliar airport alone.
+A matchmaking platform pairing travellers who'd welcome a hand — an elderly parent, a pregnant sibling, a first-time flyer — with people already on the same flight who can keep them company through security, transfers, and arrival.
 
 [**getsaathi.com**](https://getsaathi.com) · [Report a bug](https://github.com/getsaathi/saathi/issues/new) · [Request a feature](https://github.com/getsaathi/saathi/issues/new)
 

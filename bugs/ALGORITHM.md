@@ -184,7 +184,7 @@ these shine when a query filters on **many equality columns** and you'd
 otherwise need `2^k` composite B-trees to cover every subset.
 
 If matching grows to `(origin, destination, travel_date, gender_preference,
-help_categories, elder_age_band)` simultaneous-equality queries, **one**
+help_categories, traveller_age_bands)` simultaneous-equality queries, **one**
 bloom index replaces the combinatorial explosion of B-trees. Cost: bloom
 is probabilistic, so the planner still does a recheck on the heap.
 

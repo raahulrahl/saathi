@@ -159,20 +159,20 @@ mirroring the check in `messages: participants send`.
 
 **File:** [app/post/actions.ts:134-144](../app/post/actions.ts)
 
-When the elder insert fails, the code issues a plain `delete` on the
+When the traveller insert fails, the code issues a plain `delete` on the
 trip. If the delete _also_ fails (network blip, RLS misfire), you leak
-a trip row with no elder data on `/search`.
+a trip row with no traveller data on `/search`.
 
 **Fix:** wrap both inserts in a Postgres function (`rpc`) so they're a
-single transaction, or move elder rows inline on the trips insert via
-Postgres JSON → trigger expansion. Either is a real fix; the current
-two-step delete-on-failure is best-effort.
+single transaction, or move traveller rows inline on the trips insert
+via Postgres JSON → trigger expansion. Either is a real fix; the
+current two-step delete-on-failure is best-effort.
 
 ---
 
 ## M09 — `notes` is free-text and anon-readable via `public_trips`
 
-**File:** [supabase/migrations/0013_trip_elders.sql:96](../supabase/migrations/0013_trip_elders.sql)
+**File:** [supabase/migrations/0013_trip_elders.sql:96](../supabase/migrations/0013_trip_elders.sql) (view later rebuilt in 0014)
 
 Per `CLAUDE.md` memory, anon-readable `public_trips` is **intentional**
 pre-launch (discovery > privacy while the flywheel spins up). Leaving

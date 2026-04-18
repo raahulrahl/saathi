@@ -8,7 +8,7 @@
 ## Failure mode
 
 The project exists because a student flying one leg of an international
-itinerary can help an elderly passenger on the same aircraft. The current
+itinerary can help another passenger on the same aircraft. The current
 matcher excludes exactly those students.
 
 If mother posts a request with `route = ['CCU', 'DOH', 'AMS']` and a

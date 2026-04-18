@@ -72,8 +72,8 @@ export default async function OpengraphImage() {
             maxWidth: 900,
           }}
         >
-          We pair elderly travellers with someone already flying the same route. No parent navigates
-          an unfamiliar airport alone.
+          We pair travellers who&rsquo;d welcome a hand with someone already flying the same route.
+          No one navigates an unfamiliar airport alone.
         </div>
       </div>
       <div

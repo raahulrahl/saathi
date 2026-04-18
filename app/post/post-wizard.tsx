@@ -54,11 +54,11 @@ export function PostWizard({
     help_categories: defaults?.help_categories ?? [],
     thank_you_eur: defaults?.thank_you_eur ?? (kind === 'request' ? 15 : null),
     notes: defaults?.notes ?? '',
-    // For a request trip we seed ONE empty elder block so users see the
-    // parent form immediately. They can add more via the "Add another"
+    // For a request trip we seed ONE empty traveller block so users see
+    // the form immediately. They can add more via the "Add another"
     // button, or remove this one back down to zero.
-    elders:
-      defaults?.elders ??
+    travellers:
+      defaults?.travellers ??
       (kind === 'request' ? [{ first_name: '', age_band: null, medical_notes: '' }] : []),
   });
   const [error, setError] = useState<string | null>(null);
@@ -434,22 +434,22 @@ export function PostWizard({
         </div>
       </section>
 
-      {/* ─── 6. Loved-one details (request flow only) ───────────────────── */}
+      {/* ─── 6. Traveller details (request flow only) ───────────────────── */}
       {isRequest ? (
         <section className="space-y-3">
           <div>
             <h2 className="font-serif text-lg">
-              {state.elders.length > 1 ? 'About your loved ones' : 'About your loved one'}
+              {state.travellers.length > 1 ? 'About your travellers' : 'About your traveller'}
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              This could be a parent, a spouse, a sibling — whoever you&rsquo;re sending. Only age
-              bands are public. Names and medical notes stay private until the request is accepted.
-              Add more if they&rsquo;re travelling together.
+              This could be a parent, spouse, sibling, pregnant traveller, or first-time flyer —
+              whoever you&rsquo;re sending. Only age bands are public. Names and notes stay private
+              until the request is accepted. Add more if they&rsquo;re travelling together.
             </p>
           </div>
 
           <ul className="space-y-3">
-            {state.elders.map((elder, i) => (
+            {state.travellers.map((traveller, i) => (
               <li
                 key={i}
                 className="relative space-y-3 rounded-2xl border border-oat bg-cream/40 p-4"
@@ -458,13 +458,13 @@ export function PostWizard({
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                     Traveller {i + 1}
                   </span>
-                  {state.elders.length > 1 && (
+                  {state.travellers.length > 1 && (
                     <button
                       type="button"
                       onClick={() =>
                         setState((prev) => ({
                           ...prev,
-                          elders: prev.elders.filter((_, idx) => idx !== i),
+                          travellers: prev.travellers.filter((_, idx) => idx !== i),
                         }))
                       }
                       aria-label={`Remove traveller ${i + 1}`}
@@ -476,37 +476,37 @@ export function PostWizard({
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
-                    <Label htmlFor={`elder-name-${i}`} className="text-xs">
+                    <Label htmlFor={`traveller-name-${i}`} className="text-xs">
                       First name
                     </Label>
                     <Input
-                      id={`elder-name-${i}`}
-                      value={elder.first_name ?? ''}
+                      id={`traveller-name-${i}`}
+                      value={traveller.first_name ?? ''}
                       onChange={(e) => {
                         const value = e.target.value;
                         setState((prev) => {
-                          const next = [...prev.elders];
+                          const next = [...prev.travellers];
                           next[i] = { ...next[i]!, first_name: value };
-                          return { ...prev, elders: next };
+                          return { ...prev, travellers: next };
                         });
                       }}
                       placeholder={i === 0 ? 'Shanta' : 'Arun'}
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor={`elder-age-${i}`} className="text-xs">
+                    <Label htmlFor={`traveller-age-${i}`} className="text-xs">
                       Age band
                     </Label>
                     <select
-                      id={`elder-age-${i}`}
-                      value={elder.age_band ?? ''}
+                      id={`traveller-age-${i}`}
+                      value={traveller.age_band ?? ''}
                       onChange={(e) => {
                         const raw = e.target.value;
                         const value = (raw || null) as '60-70' | '70-80' | '80+' | null;
                         setState((prev) => {
-                          const next = [...prev.elders];
+                          const next = [...prev.travellers];
                           next[i] = { ...next[i]!, age_band: value };
-                          return { ...prev, elders: next };
+                          return { ...prev, travellers: next };
                         });
                       }}
                       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -519,29 +519,29 @@ export function PostWizard({
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor={`elder-notes-${i}`} className="text-xs">
-                    Medical notes (private)
+                  <Label htmlFor={`traveller-notes-${i}`} className="text-xs">
+                    Notes (private)
                   </Label>
                   <Textarea
-                    id={`elder-notes-${i}`}
+                    id={`traveller-notes-${i}`}
                     rows={2}
-                    value={elder.medical_notes ?? ''}
+                    value={traveller.medical_notes ?? ''}
                     onChange={(e) => {
                       const value = e.target.value;
                       setState((prev) => {
-                        const next = [...prev.elders];
+                        const next = [...prev.travellers];
                         next[i] = { ...next[i]!, medical_notes: value };
-                        return { ...prev, elders: next };
+                        return { ...prev, travellers: next };
                       });
                     }}
-                    placeholder="Diabetic; meds at mealtimes. Walks slowly but doesn't need a wheelchair."
+                    placeholder="Diabetic; meds at mealtimes. Walks slowly but doesn't need a wheelchair. Or: first international trip, doesn't speak English."
                   />
                 </div>
               </li>
             ))}
           </ul>
 
-          {state.elders.length < 4 && (
+          {state.travellers.length < 4 && (
             <Button
               type="button"
               variant="outline"
@@ -549,7 +549,10 @@ export function PostWizard({
               onClick={() =>
                 setState((prev) => ({
                   ...prev,
-                  elders: [...prev.elders, { first_name: '', age_band: null, medical_notes: '' }],
+                  travellers: [
+                    ...prev.travellers,
+                    { first_name: '', age_band: null, medical_notes: '' },
+                  ],
                 }))
               }
               className="gap-1.5"
