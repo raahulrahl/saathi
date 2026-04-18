@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/git-hero.jpeg" alt="Saathi — a companion on the flight home" width="100%">
+  <img src="public/git-hero.png" alt="Saathi — a companion on the flight home" width="100%">
 </p>
 
 <div align="center">
