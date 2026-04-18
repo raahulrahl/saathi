@@ -9,7 +9,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       # No `version:` here on purpose. pnpm/action-setup@v4 reads the
       # version from `packageManager` in package.json (currently
       # pnpm@9.12.0). Specifying both breaks the action with
