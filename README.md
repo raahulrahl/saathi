@@ -26,8 +26,6 @@ The open-source matchmaking platform for cross-border family travel.<br/>
 
 [Website](https://getsaathi.com) · [Report a bug](https://github.com/raahulrahl/saathi/issues/new) · [Request a feature](https://github.com/raahulrahl/saathi/issues/new) · [Contributing](#contributing)
 
-**English**
-
 </div>
 
 ## What is Saathi?
@@ -112,24 +110,38 @@ sequenceDiagram
 
 ## Architecture
 
-```
-┌──────────────┐     ┌────────────────┐     ┌──────────────────┐
-│  Next.js 15  │────>│     Clerk      │     │    Supabase      │
-│  App Router  │     │  (auth / JWT)  │────>│ Postgres + RLS   │
-└──────┬───────┘     └────────────────┘     └──────┬───────────┘
-       │                                           │
-       ├──────────────────────┬──────────────┬─────┤
-       │                      │              │     │
-┌──────▼──────┐  ┌────────────▼───┐  ┌───────▼──┐  │
-│ /matches    │  │ notification   │  │ trip_legs│  │
-│ shortlist   │  │ queue (cron)   │  │  graph   │  │
-└─────────────┘  └───────┬────────┘  └──────────┘  │
-                         │                         │
-               ┌─────────┴─────────┐               │
-           ┌───▼────┐         ┌────▼─────┐    ┌────▼─────┐
-           │ Resend │         │ Twilio   │    │ AirLabs  │
-           │ email  │         │ WhatsApp │    │ flights  │
-           └────────┘         └──────────┘    └──────────┘
+```mermaid
+graph LR
+    Browser([Browser])
+
+    subgraph Vercel["Next.js 15 on Vercel"]
+        App[App Router<br/>pages + Server Actions]
+        Matches["/trip/:id/matches<br/>shortlist page"]
+        Cron[Vercel Cron<br/>every minute / daily]
+    end
+
+    subgraph Supabase["Supabase · Postgres + RLS"]
+        DB[(trips · matches<br/>trip_legs · queue)]
+    end
+
+    Clerk[Clerk<br/>auth / JWT]
+
+    subgraph External["External services"]
+        Resend[Resend<br/>email digests]
+        Twilio[Twilio<br/>WhatsApp OTP]
+        AirLabs[AirLabs<br/>flight routes]
+    end
+
+    Browser --> App
+    Browser --> Matches
+    App -->|sign-in JWT| Clerk
+    Clerk -->|verified JWT| DB
+    App -->|RLS-gated queries| DB
+    App -->|enqueue pending_notifications| DB
+    Cron -->|claim + dispatch| DB
+    Cron -->|send| Resend
+    Cron -->|send| Twilio
+    App -->|cache miss| AirLabs
 ```
 
 | Layer         | Stack                                                                |
