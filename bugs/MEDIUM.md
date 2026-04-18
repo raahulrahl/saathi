@@ -7,6 +7,8 @@ aren't blocking launch to a small beta.
 
 ## M01 — `/api/flights/lookup` has no auth or rate limit
 
+**Status:** ✅ FIXED in [supabase/migrations/0018_rate_limits.sql](../supabase/migrations/0018_rate_limits.sql) + [lib/rate-limit.ts](../lib/rate-limit.ts) + [app/api/flights/lookup/route.ts](../app/api/flights/lookup/route.ts) (2026-04-18). Now requires a signed-in Clerk user, applies a 20/minute per-user rate limit via a pg-function-backed fixed-window counter, and validates the flight-number format AFTER canonicalisation so garbage inputs can't poison `flight_cache`. Anonymous users never hit this endpoint (only the post wizard calls it, and posting requires auth), so the auth gate doesn't break any flow. Content below preserved for history.
+
 **File:** [app/api/flights/lookup/route.ts:142-347](../app/api/flights/lookup/route.ts)
 
 Anonymous POST; each cache miss burns AirLabs quota. The file-top comment

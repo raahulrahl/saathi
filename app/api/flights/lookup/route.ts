@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 /**
  * Flight lookup API using AirLabs.
@@ -22,16 +24,26 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
  *   For cache hits, departure is set to noon local (safe anchor) and
  *   arrival = departure + duration.
  *
- * No Upstash / Redis rate limiting — removed to eliminate NOPERM noise
- * while the token issue is being resolved. Re-add when Upstash is ready.
+ * Access control (bug M01):
+ *   * Requires a signed-in Clerk user. The only caller is the post
+ *     wizard, which already gates on sign-in, so this doesn't break any
+ *     anon flow — it just closes the abuse vector (anon scripts burning
+ *     AirLabs quota).
+ *   * Per-user rate limit via check_rate_limit (20 / min). Authenticated
+ *     users with typo loops or stuck forms get a 429 instead of a
+ *     burned AirLabs quota.
+ *   * Flight-number format validated AFTER canonicalisation — bogus
+ *     strings like "hello12" are rejected before a cache lookup, so
+ *     they can't pollute flight_cache.
  */
 
+const RATE_LIMIT_PER_MINUTE = 20;
+
 const RequestSchema = z.object({
-  flightNumber: z
-    .string()
-    .min(2)
-    .max(10)
-    .regex(/^[A-Z0-9]+$/i, 'Invalid flight number'),
+  flightNumber: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toUpperCase().replace(/[\s-]/g, '') : v),
+    z.string().regex(/^[A-Z0-9]{2}\d{1,4}$/, 'Flight number must look like "QR540" or "6E123".'),
+  ),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
 });
 
@@ -140,6 +152,33 @@ function approximateTimes(
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  // ── Auth. Only the post wizard hits this, and posting requires
+  // sign-in — so blocking anon doesn't break any user-facing flow.
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json(
+      { success: false, error: 'Please sign in.', fallbackToManual: true },
+      { status: 401 },
+    );
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  // ── Per-user rate limit. 20 lookups/minute is ~6 legs worth of
+  // "look up, fix typo, re-look-up" — enough for legit use, restrictive
+  // enough to blunt a script.
+  const allowed = await checkRateLimit(supabase, 'flights/lookup', RATE_LIMIT_PER_MINUTE);
+  if (!allowed) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Too many lookups — try again in a minute.',
+        fallbackToManual: true,
+      },
+      { status: 429 },
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -147,6 +186,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Invalid JSON' }, { status: 400 });
   }
 
+  // Strict format validation runs AFTER auth + rate-limit so garbage
+  // lookups can't poison the cache, and rejected inputs still count
+  // against the per-user bucket (no fast path for attackers to skip).
   const parsed = RequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -159,10 +201,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { flightNumber, date } = parsed.data;
-  const flightIata = flightNumber.trim().toUpperCase().replace(/\s+/g, '');
-
-  const supabase = await createSupabaseServerClient();
+  // Preprocess already canonicalised flightNumber — trust it.
+  const { flightNumber: flightIata, date } = parsed.data;
 
   // ── 1. DB cache lookup ─────────────────────────────────────────────────────
   const { data: cached } = await supabase
