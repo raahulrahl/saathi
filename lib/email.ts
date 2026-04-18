@@ -66,7 +66,7 @@ export async function sendMatchNotificationEmail(
     `Hi,`,
     ``,
     isRequest
-      ? `${data.posterName} is looking for a companion for their elderly family member on your route.`
+      ? `${data.posterName} is looking for a companion for a family member travelling on your route.`
       : `${data.posterName} is offering to help on your route.`,
     ``,
     `Route: ${data.routeLabel}`,

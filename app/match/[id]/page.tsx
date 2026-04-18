@@ -81,16 +81,16 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
   const youArePoster = userId === m.poster.id;
   const other = youArePoster ? m.requester : m.poster;
 
-  // Fetch elders for this trip. Visible once matched (RLS: trip owner and
+  // Fetch travellers for this trip. Visible once matched (RLS: trip owner and
   // the accepted requester are the only authenticated users who can read
   // these rows — enforced at the DB layer via the 0013 migration's policy
   // plus the match_requests status='accepted' join).
-  const { data: elders } = await supabase
-    .from('trip_elders')
+  const { data: travellers } = await supabase
+    .from('trip_travellers')
     .select('id, first_name, age_band, medical_notes, sort_order')
     .eq('trip_id', m.trip.id)
     .order('sort_order', { ascending: true });
-  const elderList = elders ?? [];
+  const travellerList = travellers ?? [];
 
   // Fetch the other person's primary language separately — profile_languages
   // is normalised post-0011 and PostgREST embeds from `profiles` would need
@@ -137,14 +137,14 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
             </CardContent>
           </Card>
 
-          {elderList.length > 0 ? (
+          {travellerList.length > 0 ? (
             <Card>
               <CardContent className="space-y-4 p-5">
                 <h2 className="font-serif text-lg">
-                  {elderList.length === 1 ? 'About the traveller' : 'About the travellers'}
+                  {travellerList.length === 1 ? 'About the traveller' : 'About the travellers'}
                 </h2>
                 <ul className="space-y-3">
-                  {elderList.map((e, i) => (
+                  {travellerList.map((e, i) => (
                     <li
                       key={e.id}
                       className={i > 0 ? 'border-t border-dashed border-oat pt-3' : ''}

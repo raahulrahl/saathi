@@ -6,12 +6,13 @@
  * PostWizard. Writes through the Clerk-aware Supabase client so RLS
  * enforces owner-only inserts.
  *
- * Data model (post-migration 0013):
- *   - trips table: route, date, airline, languages, etc. — no elder fields.
- *   - trip_elders table: one row per elderly person on a request trip.
+ * Data model (post-migrations 0013 + 0014):
+ *   - trips table: route, date, airline, languages, etc. — no per-traveller fields.
+ *   - trip_travellers table: one row per person being helped on a request trip
+ *     (elder, pregnant traveller, first-time flyer with a language barrier, etc.).
  *
  * For a request, this action inserts the trip row and then inserts
- * the elders (if any) in a separate INSERT. Both live in the same
+ * the traveller rows (if any) in a separate INSERT. Both live in the same
  * implicit PostgREST request so they either both land or both fail —
  * but if the second call errors we explicitly delete the trip to
  * avoid a half-written request being visible in /search.

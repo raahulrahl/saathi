@@ -98,7 +98,7 @@ export async function fetchTripsForSearch(
     .select(
       `id, user_id, kind, route, travel_date, airline, flight_numbers,
        languages, gender_preference, help_categories, thank_you_eur, notes,
-       status, elder_age_bands, elder_count, created_at`,
+       status, traveller_age_bands, traveller_count, created_at`,
     )
     .eq('status', 'open')
     .contains('route', [params.from])
@@ -164,8 +164,8 @@ export async function enrichTripsWithProfiles(
       primary_language: p?.primary_language ?? null,
       route: tr.route,
       travel_date: tr.travel_date,
-      elder_age_bands: tr.elder_age_bands ?? [],
-      elder_count: tr.elder_count ?? 0,
+      traveller_age_bands: tr.traveller_age_bands ?? [],
+      traveller_count: tr.traveller_count ?? 0,
       help_categories: tr.help_categories,
       thank_you_eur: tr.thank_you_eur,
       airline: tr.airline,

@@ -55,10 +55,16 @@ export interface TripsRow {
   thank_you_eur: number | null;
   notes: string | null;
   status: TripStatus;
-  elderly_first_name: string | null;
-  elderly_age_band: AgeBand | null;
-  elderly_photo_url: string | null;
-  elderly_medical_notes: string | null;
+  created_at: string;
+}
+
+export interface TripTravellersRow {
+  id: string;
+  trip_id: string;
+  first_name: string | null;
+  age_band: AgeBand | null;
+  medical_notes: string | null;
+  sort_order: number;
   created_at: string;
 }
 
@@ -162,8 +168,10 @@ export interface PublicTripsRow {
   thank_you_eur: number | null;
   notes: string | null;
   status: TripStatus;
-  elderly_age_band: AgeBand | null;
   created_at: string;
+  flight_numbers: string[] | null;
+  traveller_age_bands: (AgeBand | null)[];
+  traveller_count: number;
 }
 
 export interface ProfileReviewStatsRow {
@@ -254,6 +262,12 @@ export interface Database {
         Row: BlocksRow;
         Insert: InsertOf<BlocksRow, 'created_at'>;
         Update: UpdateOf<BlocksRow>;
+        Relationships: [];
+      };
+      trip_travellers: {
+        Row: TripTravellersRow;
+        Insert: InsertOf<TripTravellersRow, 'id' | 'created_at' | 'sort_order'>;
+        Update: UpdateOf<TripTravellersRow>;
         Relationships: [];
       };
     };
