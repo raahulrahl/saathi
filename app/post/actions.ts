@@ -48,7 +48,34 @@ const TripSchema = z
     route: z.array(z.string().regex(/^[A-Z]{3}$/)).min(2),
     travel_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     airline: z.string().max(60).optional().default(''),
-    flight_numbers: z.array(z.string().max(10)).optional().default([]),
+    /**
+     * Flight numbers per leg. Canonicalised at write time: trimmed,
+     * uppercased, interior whitespace + hyphens stripped. That way
+     * "qr540", "QR 540", and "QR-540" all store as "QR540", and the
+     * matcher doesn't need to guess the user's typing conventions at
+     * read time. Empty slots stay in the array to preserve positional
+     * alignment with `route` (leg i has flight_numbers[i]); they're
+     * stripped in the action just before insert.
+     *
+     * The regex accepts 2-char alphanumeric IATA airline codes (so
+     * "6E123", "9W456" are valid) plus 1-4 digit flight numbers.
+     */
+    flight_numbers: z
+      .preprocess(
+        (v) => {
+          if (!Array.isArray(v)) return v;
+          return v.map((s) =>
+            typeof s === 'string' ? s.trim().toUpperCase().replace(/[\s-]/g, '') : s,
+          );
+        },
+        z.array(
+          z
+            .string()
+            .regex(/^$|^[A-Z0-9]{2}\d{1,4}$/, 'Flight number must look like "QR540" or "6E123".'),
+        ),
+      )
+      .optional()
+      .default([]),
     languages: z.array(z.string().min(1)).min(1),
     gender_preference: z.enum(['any', 'male', 'female']).default('any'),
     help_categories: z.array(z.string().min(1)).default([]),

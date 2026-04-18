@@ -26,6 +26,10 @@ numbers.
 
 ## M02 — Flight-number field accepts any 10-char string
 
+**Status:** ✅ FIXED in [app/post/actions.ts](../app/post/actions.ts) (2026-04-18) via a Zod `preprocess` step that trims + uppercases + strips interior whitespace/hyphens, followed by a strict regex `^$|^[A-Z0-9]{2}\d{1,4}$`. Empty slots are preserved in the array to keep positional alignment with `route`; they're stripped in the action just before insert. Content below preserved for history.
+
+**Follow-up to consider:** once URL-side search params are also canonicalised at parse, the read-time `normaliseFlight` in [lib/matching.ts](../lib/matching.ts) can be removed.
+
 **File:** [app/post/actions.ts:46](../app/post/actions.ts)
 
 `z.array(z.string().max(10))` allows `"   "`, `"qr 540"`, `"QR-540"`,
