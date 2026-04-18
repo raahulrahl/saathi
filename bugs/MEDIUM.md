@@ -120,6 +120,8 @@ fail-open so a human sweep can catch what OpenAI would have caught.
 
 ## M06 — Race on concurrent `accept` for sibling match_requests
 
+**Status:** ✅ FIXED in [supabase/migrations/0020_match_accept_race.sql](../supabase/migrations/0020_match_accept_race.sql) (2026-04-18). `handle_match_request_accepted` now claims the trip **first** with a first-write-wins `UPDATE ... WHERE status='open' RETURNING user_id INTO v_poster`, and raises if zero rows were affected. A second concurrent accept finds the trip already `matched`, gets zero rows, and the BEFORE UPDATE trigger aborts — keeping the match_request pending (or letting it get swept to `auto_declined` by the first accept's sibling sweep, whichever commits first). Content below preserved for history.
+
 **File:** [supabase/migrations/0005_clerk.sql:385-415](../supabase/migrations/0005_clerk.sql)
 
 `handle_match_request_accepted` inserts into `matches` and then updates
