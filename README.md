@@ -13,7 +13,6 @@
 **Nobody flies alone.**
 
 The open-source matchmaking platform for cross-border family travel.<br/>
-Pair a parent, a pregnant traveller, or a first-time flyer with someone already on the same plane who can walk them through transfers, translate at the gate, and make sure they get home.
 
 [![CI](https://github.com/raahulrahl/saathi/actions/workflows/ci.yml/badge.svg)](https://github.com/raahulrahl/saathi/actions/workflows/ci.yml)
 [![GitHub stars](https://img.shields.io/github/stars/raahulrahl/saathi?style=flat)](https://github.com/raahulrahl/saathi/stargazers)
@@ -27,7 +26,7 @@ Pair a parent, a pregnant traveller, or a first-time flyer with someone already 
 
 [Website](https://getsaathi.com) · [Report a bug](https://github.com/raahulrahl/saathi/issues/new) · [Request a feature](https://github.com/raahulrahl/saathi/issues/new) · [Contributing](#contributing)
 
-**English** | हिन्दी _(soon)_ | বাংলা _(soon)_
+**English**
 
 </div>
 
@@ -45,12 +44,12 @@ We don't run the trip. We don't take a cut. We make the introduction, then get o
 
 ## Features
 
-- **Leg-based matching** — a student flying only the Doha→Amsterdam leg of a larger itinerary can help your parent on that transfer, even if they're not on the full route. Matches compute on directed flight legs, not whole itineraries.
-- **Language-first ranking** — primary-language match beats route match beats date proximity. A Bengali-speaking parent isn't served by an English-only companion.
-- **Verified identity, lightweight** — WhatsApp OTP (Twilio) + social profile URLs. Enough accountability to trust a stranger with your mother; not so much friction that nobody signs up.
-- **Curated shortlist, not swipe feed** — families see the top 3-5 companions for their specific flight, each card answering _"why this person?"_ in one line (`● Also on QR540 + QR23`).
-- **Private by default** — contact details unlock only after an accepted match. Notes moderated at submit; phone and email patterns are blocked to prevent bypassing the match gate.
-- **Durable notification queue** — Postgres-backed, atomic claim via `FOR UPDATE SKIP LOCKED`, per-recipient daily digest so a popular route doesn't flood anyone's inbox.
+- **Match by flight leg, not the whole trip** — Someone only flying Doha→Amsterdam can still help with that layover. We're not picky about where they started.
+- **Language matters more than everything else** — A Bengali-speaking companion beats a same-day English-only one. Your mom doesn't need someone who can't understand her panic.
+- **Just enough verification, not a background check** — WhatsApp OTP + a LinkedIn link. Enough to trust them with your parent, not enough to scare away normal humans.
+- **Top 3-5 matches, not Tinder for flights** — We show you the best people for your exact flight. No swiping, no endless scrolling, no "maybe this one?"
+- **Private until you say yes** — Contact details stay locked until both sides agree. No creeps sliding into DMs before the match.
+- **Smart notifications that don't spam** — Daily digest, not 47 emails. Popular routes won't flood your inbox at 3 AM.
 
 ---
 
@@ -77,21 +76,36 @@ Optional env vars (Sentry, Twilio, PostHog, Resend, AirLabs, OpenAI) are read la
 
 ## How it works
 
-### 1. A family posts a request
+```mermaid
+sequenceDiagram
+    participant Family
+    participant Saathi
+    participant Companion
+    participant Flight
 
-Route (IATA codes), date, languages the parent speaks, what kind of help is welcome — wheelchair at transfers, translation at immigration, wayfinding between gates. Up to four travellers per trip if they're flying together.
+    Note over Family: 1. Post a request
+    Family->>Saathi: Route, date, languages<br/>Help needed (wheelchair, translation, etc.)
 
-### 2. A companion matches
+    Note over Companion: 2. Companion matches
+    alt Companion already posted offer
+        Saathi->>Family: Show companion in shortlist
+    else Family finds companion
+        Family->>Saathi: Send intro request
+    end
 
-Either they posted an offer for that route already, or the family sees them on the shortlist and sends an intro. All contact stays behind the match gate until the family accepts.
+    Note over Family,Companion: 3. Agree on handoff
+    Saathi->>Family: Unlock WhatsApp + Email
+    Saathi->>Companion: Unlock WhatsApp + Email
+    Family<-->Companion: Coordinate details<br/>(meeting point, what parent looks like)
+    Note over Saathi: Saathi steps back
 
-### 3. They agree on the handoff
-
-After accept, both sides get WhatsApp and email. They coordinate the details — meeting at the gate, what the parent looks like, what help they'd like. Saathi stays out of it.
-
-### 4. The flight happens
-
-Someone walks the parent through immigration. Someone sits with them at boarding. Someone helps them find luggage at arrivals. The family stops holding their breath.
+    Note over Flight: 4. The flight happens
+    Companion->>Flight: Walk parent through immigration
+    Companion->>Flight: Sit with them at boarding
+    Companion->>Flight: Help find luggage at arrivals
+    Flight->>Family: Parent arrives safely ✓
+    Note over Family: Family stops holding their breath
+```
 
 ---
 
@@ -174,17 +188,6 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 ```
 
 The live code-review + issue tracker lives in [`bugs/`](bugs), and the UX design anchor in [`docs/UX_MATCHMAKING.md`](docs/UX_MATCHMAKING.md).
-
----
-
-## Roadmap
-
-- **In-app chat** for matched pairs (currently fall back to WhatsApp/email).
-- **Reviews UI** — table + RLS exist; the form ships with chat.
-- **Trip photo uploads** + consent flow.
-- **Admin / moderation panel** — reports table exists, UI doesn't.
-- **Companion-side shortlist** — mirror of `/trip/[id]/matches` for companions browsing requests.
-- **Connecting-flight chaining** — two companions covering consecutive legs. See [`bugs/ALGORITHM.md`](bugs/ALGORITHM.md).
 
 ---
 
