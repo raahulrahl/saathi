@@ -1,8 +1,10 @@
 <p align="center">
-  <img src="https://getsaathi.com/opengraph-image" alt="Saathi — a companion on the flight home" width="100%">
+  <img src="public/git-hero.jpeg" alt="Saathi — a companion on the flight home" width="100%">
 </p>
 
 <div align="center">
+
+<img src="public/logo.jpeg" alt="Saathi" width="96" />
 
 # Saathi
 
@@ -15,6 +17,10 @@ Pair a parent, a pregnant traveller, or a first-time flyer with someone already 
 
 [![CI](https://github.com/raahulrahl/saathi/actions/workflows/ci.yml/badge.svg)](https://github.com/raahulrahl/saathi/actions/workflows/ci.yml)
 [![GitHub stars](https://img.shields.io/github/stars/raahulrahl/saathi?style=flat)](https://github.com/raahulrahl/saathi/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/raahulrahl/saathi?style=flat)](https://github.com/raahulrahl/saathi/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/raahulrahl/saathi)](https://github.com/raahulrahl/saathi/issues)
+[![GitHub pull requests](https://img.shields.io/github/issues-pr/raahulrahl/saathi)](https://github.com/raahulrahl/saathi/pulls)
+[![Hits](https://hits.sh/github.com/raahulrahl/saathi.svg)](https://hits.sh/github.com/raahulrahl/saathi/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
@@ -125,46 +131,6 @@ Someone walks the parent through immigration. Someone sits with them at boarding
 | Feature flags | PostHog via `@flags-sdk/posthog`                                     |
 | Hosting       | Vercel                                                               |
 | Tooling       | pnpm · Vitest · ESLint · Prettier · Husky · commitlint               |
-
----
-
-## Repository layout
-
-```
-app/
-  (marketing)/              landing, FAQ
-  trip/[id]/
-    matches/                family-side shortlist page
-    request/                send-a-request fallback form
-  profile/[id]/             public profile
-  post/{request,offer}/     auth-gated posting wizard
-  onboarding/               single-form profile setup + WhatsApp OTP
-  dashboard/                my trips · incoming · sent · matches
-  match/[id]/               match thread (chat + reviews coming)
-  api/
-    verify/whatsapp/        Twilio OTP start + check
-    flights/lookup/         AirLabs flight lookup (auth + rate-limited)
-    cron/
-      auto-complete/        48h auto-complete cron (daily 03:00 UTC)
-      send-notifications/   queue drainer (every minute)
-    clerk-webhook/          user.created / updated / deleted sync
-
-components/
-  matches/                  shortlist cards + intro modal
-  dashboard/                trip + match + request cards
-  ui/                       shadcn primitives (incl. dialog)
-
-lib/
-  matching.ts               ranking function + Vitest suite
-  search.ts                 server-side search helpers
-  notifications/            durable queue (enqueue + dispatch)
-  rate-limit.ts             Postgres-backed per-user limiter
-  iata.ts · languages.ts    curated vocab
-
-supabase/migrations/        SQL schema, RLS, triggers, views (0001–0023)
-bugs/                       pre-launch code review + issue tracker
-docs/                       UX and architecture notes
-```
 
 ---
 
