@@ -1,6 +1,7 @@
 import 'server-only';
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
+import { NextResponse } from 'next/server';
 
 /**
  * Server-side auth guard. Returns the signed-in Clerk user id, or
@@ -38,4 +39,31 @@ export async function requireUserId(returnTo: string): Promise<string> {
 export async function getUserId(): Promise<string | null> {
   const { userId } = await auth();
   return userId ?? null;
+}
+
+/**
+ * Gate for Vercel Cron routes. Fails CLOSED — if CRON_SECRET isn't
+ * configured, returns 500 rather than silently letting every request
+ * through. Return value is an error response to send back, or `null`
+ * when the request is authorised and the caller should proceed.
+ *
+ * Usage:
+ *     const denied = requireCronSecret(request);
+ *     if (denied) return denied;
+ *
+ * See bugs/05-cron-auth-fails-open.md for the underlying incident this
+ * helper exists to prevent. Returns 500 (not 401) on missing secret so
+ * a preview deploy without CRON_SECRET fails loudly rather than looking
+ * authless-but-successful.
+ */
+export function requireCronSecret(request: Request): NextResponse | null {
+  const expected = process.env.CRON_SECRET;
+  if (!expected) {
+    return NextResponse.json({ ok: false, error: 'cron secret not configured' }, { status: 500 });
+  }
+  const header = request.headers.get('authorization');
+  if (header !== `Bearer ${expected}`) {
+    return NextResponse.json({ ok: false, error: 'unauthorised' }, { status: 401 });
+  }
+  return null;
 }

@@ -1,5 +1,6 @@
 # 05 — `/api/cron/auto-complete` auth fails open when `CRON_SECRET` unset
 
+**Status:** ✅ FIXED in [lib/auth-guard.ts](../lib/auth-guard.ts) (new `requireCronSecret` helper, fails closed on missing secret) + [app/api/cron/auto-complete/route.ts](../app/api/cron/auto-complete/route.ts) (switched to the helper) (2026-04-18). Content below preserved for history.
 **Severity:** HIGH
 **Area:** API / auth
 **Found:** 2026-04-18

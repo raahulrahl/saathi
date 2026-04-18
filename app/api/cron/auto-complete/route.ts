@@ -1,20 +1,17 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/server';
+import { requireCronSecret } from '@/lib/auth-guard';
 
 /**
  * Auto-complete matches 48h after the travel date if neither party disputed.
- * Intended to be hit on a daily Vercel Cron. Secured with CRON_SECRET in the
- * Authorization header. See Product Spec §6.1 — pg_cron is also an option,
- * but this lives next to the app for easy iteration in v1.
+ * Intended to be hit on a daily Vercel Cron. Auth enforced by
+ * `requireCronSecret` — fails CLOSED on missing secret (see
+ * bugs/05-cron-auth-fails-open.md). See Product Spec §6.1 — pg_cron is
+ * also an option, but this lives next to the app for easy iteration in v1.
  */
 export async function GET(request: NextRequest) {
-  const expected = process.env.CRON_SECRET;
-  if (expected) {
-    const header = request.headers.get('authorization');
-    if (header !== `Bearer ${expected}`) {
-      return NextResponse.json({ ok: false, error: 'unauthorised' }, { status: 401 });
-    }
-  }
+  const denied = requireCronSecret(request);
+  if (denied) return denied;
 
   const supabase = createSupabaseServiceClient();
   const now = new Date();
