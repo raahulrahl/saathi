@@ -80,7 +80,29 @@ const TripSchema = z
     gender_preference: z.enum(['any', 'male', 'female']).default('any'),
     help_categories: z.array(z.string().min(1)).default([]),
     thank_you_eur: z.number().int().min(0).max(500).optional().nullable(),
-    notes: z.string().max(2000).optional().default(''),
+    /**
+     * Free-text notes. Reject obvious phone / email patterns so users
+     * don't paste contact info to bypass the match gate — that
+     * contact info would otherwise leak to authenticated viewers via
+     * the base trips table (see bug M09). Catches honest mistakes;
+     * determined evaders can still spell out numbers in words, but
+     * the friction here plus 0021's anon column-level revoke raises
+     * the cost enough that the match-request flow stays the easier
+     * path.
+     */
+    notes: z
+      .string()
+      .max(2000)
+      .refine((v) => !/\+?\d[\d\s\-().]{7,}/.test(v), {
+        message:
+          'Notes can\u2019t include phone numbers \u2014 contact details unlock after a match.',
+      })
+      .refine((v) => !/[\w.+-]+@[\w-]+\.[\w.-]+/.test(v), {
+        message:
+          'Notes can\u2019t include email addresses \u2014 contact details unlock after a match.',
+      })
+      .optional()
+      .default(''),
     /**
      * Array of travellers being helped. Only applies to kind='request';
      * the server strips this for offers. Minimum zero, maximum four (we

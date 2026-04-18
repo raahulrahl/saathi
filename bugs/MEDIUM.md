@@ -186,6 +186,8 @@ current two-step delete-on-failure is best-effort.
 
 ## M09 — `notes` is free-text and anon-readable via `public_trips`
 
+**Status:** ✅ FIXED via Option C combo in [supabase/migrations/0021_lock_down_notes.sql](../supabase/migrations/0021_lock_down_notes.sql) + [app/post/actions.ts](../app/post/actions.ts) (2026-04-18). (1) Rebuilt `public_trips` view without `notes`. (2) Revoked anon's blanket `SELECT` on `public.trips` and re-granted column-level `SELECT` on everything except `notes` — blocks the direct-PostgREST scraping vector. (3) Added Zod `.refine` steps to the trip-post schema that reject obvious phone/email patterns in notes. Authenticated users still see notes via the base table for match-participant display. The discovery-friendly anon posture for routes/dates/flights/languages is preserved. Content below preserved for history.
+
 **File:** [supabase/migrations/0013_trip_elders.sql:96](../supabase/migrations/0013_trip_elders.sql) (view later rebuilt in 0014)
 
 Per `CLAUDE.md` memory, anon-readable `public_trips` is **intentional**
