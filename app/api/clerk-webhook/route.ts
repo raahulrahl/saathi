@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { Webhook } from 'svix';
-import { createSupabaseServiceClient } from '@/lib/supabase/server';
+import { eq } from 'drizzle-orm';
+import { withService } from '@/lib/db';
+import { profiles } from '@/lib/db/schema';
 
 /**
  * Clerk webhook. Replaces the `handle_new_user` and `handle_identity_linked`
@@ -89,8 +91,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
   }
 
-  const supabase = createSupabaseServiceClient();
-
   if (event.type === 'user.created' || event.type === 'user.updated') {
     const u = event.data as ClerkUserData;
     if (!u.id) {
@@ -110,28 +110,44 @@ export async function POST(request: NextRequest) {
       // Languages live in profile_languages now and are seeded by the
       // onboarding form — not here — so users pick their own rather
       // than inheriting a default English they never asked for.
-      const { error } = await supabase.from('profiles').upsert(
-        {
-          id: u.id,
-          role: 'companion', // default; user switches in onboarding
-          display_name: displayName,
-          photo_url: u.image_url ?? null,
-          email: primaryEmail,
-        },
-        { onConflict: 'id' },
-      );
-      if (error) {
-        return NextResponse.json({ error: `profiles upsert: ${error.message}` }, { status: 500 });
+      try {
+        await withService((tx) =>
+          tx
+            .insert(profiles)
+            .values({
+              id: u.id,
+              role: 'companion', // default; user switches in onboarding
+              displayName,
+              photoUrl: u.image_url ?? null,
+              email: primaryEmail,
+            })
+            .onConflictDoUpdate({
+              target: profiles.id,
+              set: {
+                displayName,
+                photoUrl: u.image_url ?? null,
+                email: primaryEmail,
+              },
+            }),
+        );
+      } catch (err) {
+        return NextResponse.json(
+          { error: `profiles upsert: ${(err as Error).message}` },
+          { status: 500 },
+        );
       }
     } else {
       // user.updated: only refresh fields Clerk can change.
-      await supabase
-        .from('profiles')
-        .update({
-          photo_url: u.image_url ?? null,
-          email: primaryEmail,
-        })
-        .eq('id', u.id);
+      try {
+        await withService((tx) =>
+          tx
+            .update(profiles)
+            .set({ photoUrl: u.image_url ?? null, email: primaryEmail })
+            .where(eq(profiles.id, u.id)),
+        );
+      } catch {
+        // best-effort
+      }
     }
 
     // NOTE: we used to mirror verified OAuth accounts into a
@@ -154,9 +170,13 @@ export async function POST(request: NextRequest) {
     if (!u.id) {
       return NextResponse.json({ error: 'user.id missing' }, { status: 400 });
     }
-    const { error } = await supabase.from('profiles').delete().eq('id', u.id);
-    if (error) {
-      return NextResponse.json({ error: `profile delete: ${error.message}` }, { status: 500 });
+    try {
+      await withService((tx) => tx.delete(profiles).where(eq(profiles.id, u.id!)));
+    } catch (err) {
+      return NextResponse.json(
+        { error: `profile delete: ${(err as Error).message}` },
+        { status: 500 },
+      );
     }
   }
 

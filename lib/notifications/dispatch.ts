@@ -1,7 +1,9 @@
 import 'server-only';
 
 import * as Sentry from '@sentry/nextjs';
-import { createSupabaseServiceClient } from '@/lib/supabase/server';
+import { eq, inArray, sql } from 'drizzle-orm';
+import { withService, type DbTx } from '@/lib/db';
+import { pendingNotifications, profiles, trips } from '@/lib/db/schema';
 import { sendMatchDigestEmail } from '@/lib/email';
 import type { PendingNotificationPayload, PendingNotificationsRow } from '@/types/db';
 
@@ -31,18 +33,6 @@ import type { PendingNotificationPayload, PendingNotificationsRow } from '@/type
  *     after 5 attempts (enforced in the claim rpc).
  */
 
-/**
- * Minimum gap between digest emails to the same recipient. One email
- * per day keeps the inbox respectful — a user whose route collects 20
- * matches over the course of a day gets a single digest listing all
- * of them, not 20 separate emails. First-ever notification for a
- * recipient (`last_notified_at IS NULL`) bypasses this gate and sends
- * immediately; only repeats wait.
- *
- * Tradeoff: time-sensitive trips (posted <24 h before travel) may
- * land in the next day's digest rather than firing immediately. Add
- * an urgency bypass here if that becomes a real user complaint.
- */
 const COOLDOWN_MINUTES = 24 * 60;
 
 /** How many pending rows to claim per wake-up. */
@@ -62,225 +52,218 @@ interface DispatchResult {
 export async function dispatchPendingNotifications(
   batchSize: number = BATCH_SIZE,
 ): Promise<DispatchResult> {
-  const supabase = createSupabaseServiceClient();
-
   // ── 1. Claim a batch atomically ────────────────────────────────────
-  const { data: claimed, error: claimError } = await supabase.rpc('claim_pending_notifications', {
-    batch_size: batchSize,
-  });
-  if (claimError) {
-    Sentry.captureException(claimError, {
-      tags: { scope: 'notify-dispatch', stage: 'claim' },
+  let rows: PendingNotificationsRow[];
+  try {
+    rows = await withService(async (tx) => {
+      // `tx.execute` is the escape hatch for arbitrary SQL. Drizzle types
+      // it as Record<string,unknown>; we know the function returns rows
+      // shaped like pending_notifications, so cast at the boundary.
+      const claimed = await tx.execute(
+        sql`select * from public.claim_pending_notifications(${batchSize})`,
+      );
+      return claimed as unknown as PendingNotificationsRow[];
     });
-    console.error('[notify:dispatch] claim failed:', claimError.message);
+  } catch (err) {
+    Sentry.captureException(err, { tags: { scope: 'notify-dispatch', stage: 'claim' } });
+    console.error('[notify:dispatch] claim failed:', (err as Error).message);
     return { claimed: 0, sent: 0, skipped: 0, failed: 0, deferred: 0 };
   }
-  const rows = (claimed ?? []) as PendingNotificationsRow[];
   if (rows.length === 0) {
     return { claimed: 0, sent: 0, skipped: 0, failed: 0, deferred: 0 };
   }
 
-  // ── 2. Freshness gate: exclude rows whose source trip is no longer open
-  const tripIds = Array.from(new Set(rows.map((r) => r.new_trip_id)));
-  const { data: tripStatuses } = await supabase
-    .from('trips')
-    .select('id, status')
-    .in('id', tripIds);
-  const openTripIds = new Set(
-    (tripStatuses ?? []).filter((t) => t.status === 'open').map((t) => t.id),
-  );
+  // The rest of the cycle batches reads + per-row writes. Keep it all in
+  // a single withService — reads don't need a per-row transaction, and the
+  // writes are independent enough that one tx is acceptable. (Each row's
+  // status transition is idempotent given the claim rpc set status='in_flight'.)
+  return withService(async (tx) => {
+    // ── 2. Freshness gate: exclude rows whose source trip is no longer open
+    const tripIds = Array.from(new Set(rows.map((r) => r.new_trip_id)));
+    const tripStatuses = await tx
+      .select({ id: trips.id, status: trips.status })
+      .from(trips)
+      .where(inArray(trips.id, tripIds));
+    const openTripIds = new Set(tripStatuses.filter((t) => t.status === 'open').map((t) => t.id));
 
-  // ── 3. Per-recipient cooldown check ────────────────────────────────
-  const recipientIds = Array.from(new Set(rows.map((r) => r.recipient_user_id)));
-  const { data: recipients } = await supabase
-    .from('profiles')
-    .select('id, email, last_notified_at')
-    .in('id', recipientIds);
-  const cooldownCutoff = new Date(Date.now() - COOLDOWN_MINUTES * 60_000).toISOString();
-  const recipientById = new Map<
-    string,
-    { email: string | null; last_notified_at: string | null }
-  >();
-  for (const r of recipients ?? []) {
-    recipientById.set(r.id, {
-      email: r.email,
-      last_notified_at: r.last_notified_at,
-    });
-  }
+    // ── 3. Per-recipient cooldown check ────────────────────────────────
+    const recipientIds = Array.from(new Set(rows.map((r) => r.recipient_user_id)));
+    const recipients = await tx
+      .select({
+        id: profiles.id,
+        email: profiles.email,
+        lastNotifiedAt: profiles.lastNotifiedAt,
+      })
+      .from(profiles)
+      .where(inArray(profiles.id, recipientIds));
+    const cooldownCutoff = new Date(Date.now() - COOLDOWN_MINUTES * 60_000).toISOString();
+    const recipientById = new Map<
+      string,
+      { email: string | null; last_notified_at: string | null }
+    >();
+    for (const r of recipients) {
+      recipientById.set(r.id, {
+        email: r.email,
+        last_notified_at: r.lastNotifiedAt,
+      });
+    }
 
-  // ── 4. Bucket rows per recipient, applying gates ───────────────────
-  type SortedRow = PendingNotificationsRow & { _bucket: 'send' | 'defer' | 'skip' | 'fail' };
-  const byRecipient = new Map<string, SortedRow[]>();
+    // ── 4. Bucket rows per recipient, applying gates ───────────────────
+    type SortedRow = PendingNotificationsRow & { _bucket: 'send' | 'defer' | 'skip' | 'fail' };
+    const byRecipient = new Map<string, SortedRow[]>();
 
-  for (const row of rows) {
-    let bucket: SortedRow['_bucket'] = 'send';
+    for (const row of rows) {
+      let bucket: SortedRow['_bucket'] = 'send';
 
-    // Gate 1: trip still open?
-    if (!openTripIds.has(row.new_trip_id)) {
-      bucket = 'skip';
-    } else {
-      const recipient = recipientById.get(row.recipient_user_id);
-      // Gate 2: do we have a delivery address for this channel?
-      if (row.channel === 'email' && !recipient?.email) {
+      // Gate 1: trip still open?
+      if (!openTripIds.has(row.new_trip_id)) {
         bucket = 'skip';
-      } else if (
-        row.channel === 'email' &&
-        recipient?.last_notified_at &&
-        recipient.last_notified_at > cooldownCutoff
-      ) {
-        // Gate 3: cooldown — defer this row past the cooldown window.
-        bucket = 'defer';
+      } else {
+        const recipient = recipientById.get(row.recipient_user_id);
+        // Gate 2: do we have a delivery address for this channel?
+        if (row.channel === 'email' && !recipient?.email) {
+          bucket = 'skip';
+        } else if (
+          row.channel === 'email' &&
+          recipient?.last_notified_at &&
+          recipient.last_notified_at > cooldownCutoff
+        ) {
+          // Gate 3: cooldown — defer this row past the cooldown window.
+          bucket = 'defer';
+        }
+        // WhatsApp: no cooldown yet (template doesn't digest). Gated by
+        // TWILIO_WHATSAPP_MATCH_CONTENT_SID at enqueue time. Left to
+        // send individually until a digest template exists.
       }
-      // WhatsApp: no cooldown yet (template doesn't digest). Gated by
-      // TWILIO_WHATSAPP_MATCH_CONTENT_SID at enqueue time. Left to
-      // send individually until a digest template exists.
+
+      const list = byRecipient.get(row.recipient_user_id) ?? [];
+      list.push({ ...row, _bucket: bucket });
+      byRecipient.set(row.recipient_user_id, list);
     }
 
-    const list = byRecipient.get(row.recipient_user_id) ?? [];
-    list.push({ ...row, _bucket: bucket });
-    byRecipient.set(row.recipient_user_id, list);
-  }
+    // ── 5. Dispatch per recipient ──────────────────────────────────────
+    const result: DispatchResult = {
+      claimed: rows.length,
+      sent: 0,
+      skipped: 0,
+      failed: 0,
+      deferred: 0,
+    };
 
-  // ── 5. Dispatch per recipient ──────────────────────────────────────
-  const result: DispatchResult = {
-    claimed: rows.length,
-    sent: 0,
-    skipped: 0,
-    failed: 0,
-    deferred: 0,
-  };
+    for (const [recipientId, list] of byRecipient) {
+      const recipient = recipientById.get(recipientId);
+      const sendable = list.filter((r) => r._bucket === 'send' && r.channel === 'email');
+      const deferRows = list.filter((r) => r._bucket === 'defer');
+      const skipRows = list.filter((r) => r._bucket === 'skip');
 
-  for (const [recipientId, list] of byRecipient) {
-    const recipient = recipientById.get(recipientId);
-    const sendable = list.filter((r) => r._bucket === 'send' && r.channel === 'email');
-    const deferRows = list.filter((r) => r._bucket === 'defer');
-    const skipRows = list.filter((r) => r._bucket === 'skip');
+      // 5a. Skip — mark and move on.
+      for (const row of skipRows) {
+        await markSkipped(tx, row);
+        result.skipped += 1;
+      }
 
-    // 5a. Skip — mark and move on.
-    for (const row of skipRows) {
-      await markSkipped(supabase, row);
-      result.skipped += 1;
-    }
+      // 5b. Defer — push next_attempt_at to the moment this recipient's
+      // cooldown lifts, not a blanket cooldown-from-now.
+      const lastNotifiedAt = recipient?.last_notified_at;
+      const wakeAt = lastNotifiedAt
+        ? new Date(new Date(lastNotifiedAt).getTime() + COOLDOWN_MINUTES * 60_000)
+        : new Date(Date.now() + COOLDOWN_MINUTES * 60_000);
+      for (const row of deferRows) {
+        await markDeferredUntil(tx, row, wakeAt);
+        result.deferred += 1;
+      }
 
-    // 5b. Defer — push next_attempt_at to the moment this recipient's
-    // cooldown lifts, not a blanket cooldown-from-now. A recipient
-    // whose last_notified_at was 23 h ago should wake this row in 1 h,
-    // not 24 h. Falls back to a full cooldown if last_notified_at is
-    // missing (shouldn't happen — we only defer when it's set — but
-    // defensive).
-    const lastNotifiedAt = recipient?.last_notified_at;
-    const wakeAt = lastNotifiedAt
-      ? new Date(new Date(lastNotifiedAt).getTime() + COOLDOWN_MINUTES * 60_000)
-      : new Date(Date.now() + COOLDOWN_MINUTES * 60_000);
-    for (const row of deferRows) {
-      await markDeferredUntil(supabase, row, wakeAt);
-      result.deferred += 1;
-    }
-
-    // 5c. Send — one digest email per recipient with all sendable rows.
-    if (sendable.length > 0 && recipient?.email) {
-      try {
-        const payloads = sendable.map((r) => r.payload as PendingNotificationPayload);
-        const ok = await sendMatchDigestEmail(recipient.email, payloads);
-        if (ok) {
-          const ids = sendable.map((r) => r.id);
-          const nowIso = new Date().toISOString();
-          await supabase
-            .from('pending_notifications')
-            .update({ status: 'sent', sent_at: nowIso })
-            .in('id', ids);
-          await supabase
-            .from('profiles')
-            .update({ last_notified_at: nowIso })
-            .eq('id', recipientId);
-          result.sent += sendable.length;
-        } else {
+      // 5c. Send — one digest email per recipient with all sendable rows.
+      if (sendable.length > 0 && recipient?.email) {
+        try {
+          const payloads = sendable.map((r) => r.payload as PendingNotificationPayload);
+          const ok = await sendMatchDigestEmail(recipient.email, payloads);
+          if (ok) {
+            const ids = sendable.map((r) => r.id);
+            const nowIso = new Date().toISOString();
+            await tx
+              .update(pendingNotifications)
+              .set({ status: 'sent', sentAt: nowIso })
+              .where(inArray(pendingNotifications.id, ids));
+            await tx
+              .update(profiles)
+              .set({ lastNotifiedAt: nowIso })
+              .where(eq(profiles.id, recipientId));
+            result.sent += sendable.length;
+          } else {
+            for (const row of sendable) {
+              await markFailed(tx, row, 'send returned false');
+              result.failed += 1;
+            }
+          }
+        } catch (err) {
+          Sentry.captureException(err, {
+            tags: { scope: 'notify-dispatch', stage: 'send' },
+            extra: { recipientId },
+          });
           for (const row of sendable) {
-            await markFailed(supabase, row, 'send returned false');
+            await markFailed(tx, row, err instanceof Error ? err.message : 'unknown');
             result.failed += 1;
           }
         }
-      } catch (err) {
-        Sentry.captureException(err, {
-          tags: { scope: 'notify-dispatch', stage: 'send' },
-          extra: { recipientId },
-        });
-        for (const row of sendable) {
-          await markFailed(supabase, row, err instanceof Error ? err.message : 'unknown');
-          result.failed += 1;
-        }
+      }
+
+      // 5d. WhatsApp rows — not batched yet. Intentionally unhandled in
+      // this cycle; will be caught when the WhatsApp digest template ships.
+      const whatsappRows = list.filter((r) => r._bucket === 'send' && r.channel === 'whatsapp');
+      const whatsappWakeAt = new Date(Date.now() + 60_000); // defer by 1 min
+      for (const row of whatsappRows) {
+        await markDeferredUntil(tx, row, whatsappWakeAt);
+        result.deferred += 1;
       }
     }
 
-    // 5d. WhatsApp rows — not batched yet. Intentionally unhandled in
-    // this cycle; will be caught when the WhatsApp digest template ships.
-    const whatsappRows = list.filter((r) => r._bucket === 'send' && r.channel === 'whatsapp');
-    const whatsappWakeAt = new Date(Date.now() + 60_000); // defer by 1 min
-    for (const row of whatsappRows) {
-      await markDeferredUntil(supabase, row, whatsappWakeAt);
-      result.deferred += 1;
-    }
-  }
-
-  return result;
+    return result;
+  });
 }
 
 // ── Row state transitions ──────────────────────────────────────────────
 
-async function markSkipped(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
-  row: PendingNotificationsRow,
-) {
-  await supabase
-    .from('pending_notifications')
-    .update({ status: 'skipped', sent_at: new Date().toISOString() })
-    .eq('id', row.id);
+async function markSkipped(tx: DbTx, row: PendingNotificationsRow) {
+  await tx
+    .update(pendingNotifications)
+    .set({ status: 'skipped', sentAt: new Date().toISOString() })
+    .where(eq(pendingNotifications.id, row.id));
 }
 
-async function markDeferredUntil(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
-  row: PendingNotificationsRow,
-  wakeAt: Date,
-) {
+async function markDeferredUntil(tx: DbTx, row: PendingNotificationsRow, wakeAt: Date) {
   // Push next_attempt_at to an explicit wake time. Reset status to
   // 'pending' so the next claim cycle picks it up. Don't count the
   // deferral as a failed attempt — the row's fine, it just arrived
   // inside another recipient's cooldown.
-  await supabase
-    .from('pending_notifications')
-    .update({
+  await tx
+    .update(pendingNotifications)
+    .set({
       status: 'pending',
       attempts: Math.max(0, row.attempts - 1),
-      next_attempt_at: wakeAt.toISOString(),
+      nextAttemptAt: wakeAt.toISOString(),
     })
-    .eq('id', row.id);
+    .where(eq(pendingNotifications.id, row.id));
 }
 
-async function markFailed(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
-  row: PendingNotificationsRow,
-  errorMessage: string,
-) {
+async function markFailed(tx: DbTx, row: PendingNotificationsRow, errorMessage: string) {
   const nextAttempts = row.attempts; // already bumped by claim rpc
   if (nextAttempts >= 5) {
     // Permanent fail.
-    await supabase
-      .from('pending_notifications')
-      .update({ status: 'failed', last_error: errorMessage })
-      .eq('id', row.id);
+    await tx
+      .update(pendingNotifications)
+      .set({ status: 'failed', lastError: errorMessage })
+      .where(eq(pendingNotifications.id, row.id));
     return;
   }
   // Transient — back to pending with exponential backoff.
   const backoff = BACKOFF_MINUTES[Math.min(nextAttempts - 1, BACKOFF_MINUTES.length - 1)] ?? 60;
-  await supabase
-    .from('pending_notifications')
-    .update({
+  await tx
+    .update(pendingNotifications)
+    .set({
       status: 'pending',
-      last_error: errorMessage,
-      next_attempt_at: new Date(Date.now() + backoff * 60_000).toISOString(),
+      lastError: errorMessage,
+      nextAttemptAt: new Date(Date.now() + backoff * 60_000).toISOString(),
     })
-    .eq('id', row.id);
+    .where(eq(pendingNotifications.id, row.id));
 }

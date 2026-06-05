@@ -1,6 +1,8 @@
 import 'server-only';
 
-import { createSupabaseServiceClient } from '@/lib/supabase/server';
+import { and, eq, gte, inArray, lte, ne, or, type SQL } from 'drizzle-orm';
+import { withService } from '@/lib/db';
+import { tripLegs, trips } from '@/lib/db/schema';
 import { dateWindow } from '@/lib/dates';
 
 /**
@@ -21,8 +23,8 @@ import { dateWindow } from '@/lib/dates';
  * etc.) does not auto-notify — too noisy. Those still surface on the
  * search page where the user is actively browsing.
  *
- * Uses the service-role client because we need to read across all users'
- * trips, not just the poster's.
+ * Uses withService because we need to read across all users' trips, not
+ * just the poster's.
  */
 
 const DATE_WINDOW_DAYS = 1;
@@ -64,74 +66,84 @@ function newTripLegs(trip: NewTripInfo): Array<{
 }
 
 export async function findMatchingTrips(newTrip: NewTripInfo): Promise<MatchedTrip[]> {
-  const supabase = createSupabaseServiceClient();
   const oppositeKind = newTrip.kind === 'request' ? 'offer' : 'request';
 
   const legs = newTripLegs(newTrip);
   if (legs.length === 0) return [];
 
   const { start, end } = dateWindow(newTrip.travel_date, DATE_WINDOW_DAYS);
-
-  // Collect candidate trip_ids from trip_legs. We issue two queries per
-  // new trip — one for flight-number matches, one for (o,d,date) matches —
-  // and union the ids in memory. Postgres' OR-of-index-conditions path
-  // is finicky with partial indexes; two explicit queries are cheaper
-  // and easier to reason about than trying to coax the planner.
   const flightNumbers = legs.map((l) => l.flight_number).filter((fn): fn is string => !!fn);
 
-  const candidateIds = new Set<string>();
+  return withService(async (tx) => {
+    const candidateIds = new Set<string>();
 
-  if (flightNumbers.length > 0) {
-    const { data: flightHits, error } = await supabase
-      .from('trip_legs')
-      .select('trip_id')
-      .in('flight_number', flightNumbers)
-      .gte('travel_date', start)
-      .lte('travel_date', end);
-    if (error) {
-      console.error('[auto-match] flight-leg query failed:', error.message);
-    } else {
-      for (const row of flightHits ?? []) candidateIds.add(row.trip_id);
+    // 1. Flight-number matches.
+    if (flightNumbers.length > 0) {
+      try {
+        const flightHits = await tx
+          .select({ tripId: tripLegs.tripId })
+          .from(tripLegs)
+          .where(
+            and(
+              inArray(tripLegs.flightNumber, flightNumbers),
+              gte(tripLegs.travelDate, start),
+              lte(tripLegs.travelDate, end),
+            ),
+          );
+        for (const row of flightHits) candidateIds.add(row.tripId);
+      } catch (err) {
+        console.error('[auto-match] flight-leg query failed:', (err as Error).message);
+      }
     }
-  }
 
-  // (origin, destination, date) matches — issued as a single query using
-  // an OR of per-leg predicates. Fewer round-trips than one-per-leg, and
-  // each OR branch resolves to trip_legs_od_date_idx.
-  const odClauses = legs
-    .map((l) => `and(origin.eq.${l.origin},destination.eq.${l.destination})`)
-    .join(',');
+    // 2. (origin, destination, date) matches — issued as a single query
+    // using an OR of per-leg predicates. Fewer round-trips than one-per-leg,
+    // and each OR branch resolves to trip_legs_od_date_idx.
+    const odPredicates: SQL[] = legs.map(
+      (l) => and(eq(tripLegs.origin, l.origin), eq(tripLegs.destination, l.destination))!,
+    );
+    try {
+      const odHits = await tx
+        .select({ tripId: tripLegs.tripId })
+        .from(tripLegs)
+        .where(
+          and(or(...odPredicates), gte(tripLegs.travelDate, start), lte(tripLegs.travelDate, end)),
+        );
+      for (const row of odHits) candidateIds.add(row.tripId);
+    } catch (err) {
+      console.error('[auto-match] od-leg query failed:', (err as Error).message);
+    }
 
-  const { data: odHits, error: odError } = await supabase
-    .from('trip_legs')
-    .select('trip_id')
-    .or(odClauses)
-    .gte('travel_date', start)
-    .lte('travel_date', end);
-  if (odError) {
-    console.error('[auto-match] od-leg query failed:', odError.message);
-  } else {
-    for (const row of odHits ?? []) candidateIds.add(row.trip_id);
-  }
+    if (candidateIds.size === 0) return [];
 
-  if (candidateIds.size === 0) return [];
-
-  // Fetch the candidate trips themselves, filtered down to opposite kind,
-  // open status, not-self. Belt-and-suspenders — the leg match already
-  // scoped by date, but we still need to exclude closed / own trips.
-  const { data, error } = await supabase
-    .from('trips')
-    .select('id, user_id, kind, route, travel_date, flight_numbers')
-    .in('id', Array.from(candidateIds))
-    .eq('status', 'open')
-    .eq('kind', oppositeKind)
-    .neq('user_id', newTrip.user_id);
-
-  if (error) {
-    console.error('[auto-match] trip fetch failed:', error.message);
-    return [];
-  }
-
-  console.log(`[auto-match] found ${data?.length ?? 0} matching trips for ${newTrip.id}`);
-  return (data ?? []) as MatchedTrip[];
+    // 3. Fetch the candidate trips themselves, filtered down to opposite
+    // kind, open status, not-self. Belt-and-suspenders — the leg match
+    // already scoped by date, but we still need to exclude closed / own
+    // trips.
+    try {
+      const rows = await tx
+        .select({
+          id: trips.id,
+          user_id: trips.userId,
+          kind: trips.kind,
+          route: trips.route,
+          travel_date: trips.travelDate,
+          flight_numbers: trips.flightNumbers,
+        })
+        .from(trips)
+        .where(
+          and(
+            inArray(trips.id, Array.from(candidateIds)),
+            eq(trips.status, 'open'),
+            eq(trips.kind, oppositeKind),
+            ne(trips.userId, newTrip.user_id),
+          ),
+        );
+      console.log(`[auto-match] found ${rows.length} matching trips for ${newTrip.id}`);
+      return rows as MatchedTrip[];
+    } catch (err) {
+      console.error('[auto-match] trip fetch failed:', (err as Error).message);
+      return [];
+    }
+  });
 }

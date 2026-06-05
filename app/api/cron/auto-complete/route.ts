@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { createSupabaseServiceClient } from '@/lib/supabase/server';
+import { and, eq, inArray, lte } from 'drizzle-orm';
+import { withService } from '@/lib/db';
+import { matches, trips } from '@/lib/db/schema';
 import { requireCronSecret } from '@/lib/auth-guard';
 
 /**
@@ -13,32 +15,30 @@ export async function GET(request: NextRequest) {
   const denied = requireCronSecret(request);
   if (denied) return denied;
 
-  const supabase = createSupabaseServiceClient();
   const now = new Date();
   const cutoff = new Date(now.getTime() - 48 * 3600 * 1000).toISOString().slice(0, 10);
 
-  // Find active matches where travel_date is older than cutoff.
-  const { data: candidates, error } = await supabase
-    .from('matches')
-    .select('id, trip:trips!inner(travel_date)')
-    .eq('status', 'active')
-    .lte('trip.travel_date', cutoff);
+  try {
+    const updated = await withService(async (tx) => {
+      // Find active matches whose linked trip.travel_date is older than
+      // cutoff. Drizzle does the inner join via .innerJoin().
+      const candidates = await tx
+        .select({ id: matches.id })
+        .from(matches)
+        .innerJoin(trips, eq(trips.id, matches.tripId))
+        .where(and(eq(matches.status, 'active'), lte(trips.travelDate, cutoff)));
 
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      if (candidates.length === 0) return 0;
+      const ids = candidates.map((c) => c.id);
+      await tx
+        .update(matches)
+        .set({ posterMarkedComplete: true, requesterMarkedComplete: true })
+        .where(inArray(matches.id, ids));
+      return ids.length;
+    });
+
+    return NextResponse.json({ ok: true, updated });
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 500 });
   }
-
-  let updated = 0;
-  for (const row of candidates ?? []) {
-    const { error: e } = await supabase
-      .from('matches')
-      .update({
-        poster_marked_complete: true,
-        requester_marked_complete: true,
-      })
-      .eq('id', row.id);
-    if (!e) updated += 1;
-  }
-
-  return NextResponse.json({ ok: true, updated });
 }

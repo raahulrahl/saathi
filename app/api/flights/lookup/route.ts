@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { eq } from 'drizzle-orm';
+import { withService } from '@/lib/db';
+import { flightCache } from '@/lib/db/schema';
 import { checkRateLimit } from '@/lib/rate-limit';
 
 /**
@@ -162,12 +164,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const supabase = await createSupabaseServerClient();
-
   // ── Per-user rate limit. 20 lookups/minute is ~6 legs worth of
   // "look up, fix typo, re-look-up" — enough for legit use, restrictive
   // enough to blunt a script.
-  const allowed = await checkRateLimit(supabase, 'flights/lookup', RATE_LIMIT_PER_MINUTE);
+  const allowed = await checkRateLimit(userId, 'flights/lookup', RATE_LIMIT_PER_MINUTE);
   if (!allowed) {
     return NextResponse.json(
       {
@@ -205,35 +205,41 @@ export async function POST(req: NextRequest) {
   const { flightNumber: flightIata, date } = parsed.data;
 
   // ── 1. DB cache lookup ─────────────────────────────────────────────────────
-  const { data: cached } = await supabase
-    .from('flight_cache')
-    .select('*')
-    .eq('flight_iata', flightIata)
-    .maybeSingle();
+  // flight_cache has a service_role-only RLS policy (0012). Under the old
+  // supabase-authenticated client this silently returned 0 rows — the cache
+  // never actually hit. Now using withService so caching works as intended.
+  const cached = await withService(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(flightCache)
+      .where(eq(flightCache.flightIata, flightIata))
+      .limit(1);
+    return rows[0] ?? null;
+  });
 
   if (cached) {
-    const { departure, arrival } = approximateTimes(date, cached.duration_minutes);
+    const { departure, arrival } = approximateTimes(date, cached.durationMinutes);
     console.log(`[flight-lookup] cache hit for ${flightIata}`);
     return NextResponse.json({
       success: true,
       source: 'cache',
       flight: {
         flightNumber: flightIata,
-        airline: cached.airline_name ?? cached.airline_iata ?? 'Unknown airline',
-        airlineIata: cached.airline_iata ?? '',
+        airline: cached.airlineName ?? cached.airlineIata ?? 'Unknown airline',
+        airlineIata: cached.airlineIata ?? '',
         from: {
-          iata: cached.dep_iata,
-          airport: cached.dep_airport ?? cached.dep_iata,
-          timezone: cached.dep_timezone ?? '',
+          iata: cached.depIata,
+          airport: cached.depAirport ?? cached.depIata,
+          timezone: cached.depTimezone ?? '',
         },
         to: {
-          iata: cached.arr_iata,
-          airport: cached.arr_airport ?? cached.arr_iata,
-          timezone: cached.arr_timezone ?? '',
+          iata: cached.arrIata,
+          airport: cached.arrAirport ?? cached.arrIata,
+          timezone: cached.arrTimezone ?? '',
         },
         departure,
         arrival,
-        duration: cached.duration_minutes ? durationString(cached.duration_minutes) : '',
+        duration: cached.durationMinutes ? durationString(cached.durationMinutes) : '',
         status: 'scheduled',
         aircraft: null,
       },
@@ -325,21 +331,33 @@ export async function POST(req: NextRequest) {
   // ── 3. Persist to DB cache ─────────────────────────────────────────────────
   // /routes doesn't return airport names or timezones — we store the IATA and
   // duration, which is all the cache needs to hydrate future lookups.
-  await supabase.from('flight_cache').upsert(
-    {
-      flight_iata: flightIata,
-      airline_iata: airlineIata || null,
-      airline_name: airlineName || null,
-      dep_iata: schedule.dep_iata,
-      dep_airport: schedule.dep_iata,
-      dep_timezone: null,
-      arr_iata: schedule.arr_iata,
-      arr_airport: schedule.arr_iata,
-      arr_timezone: null,
-      duration_minutes: schedule.duration ?? null,
-      cached_at: new Date().toISOString(),
-    },
-    { onConflict: 'flight_iata' },
+  await withService((tx) =>
+    tx
+      .insert(flightCache)
+      .values({
+        flightIata,
+        airlineIata: airlineIata || null,
+        airlineName: airlineName || null,
+        depIata: schedule.dep_iata,
+        depAirport: schedule.dep_iata,
+        depTimezone: null,
+        arrIata: schedule.arr_iata,
+        arrAirport: schedule.arr_iata,
+        arrTimezone: null,
+        durationMinutes: schedule.duration ?? null,
+        cachedAt: new Date().toISOString(),
+      })
+      .onConflictDoUpdate({
+        target: flightCache.flightIata,
+        set: {
+          airlineIata: airlineIata || null,
+          airlineName: airlineName || null,
+          depIata: schedule.dep_iata,
+          arrIata: schedule.arr_iata,
+          durationMinutes: schedule.duration ?? null,
+          cachedAt: new Date().toISOString(),
+        },
+      }),
   );
 
   // ── 4. Build response ──────────────────────────────────────────────────────

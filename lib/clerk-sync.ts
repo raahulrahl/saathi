@@ -1,6 +1,7 @@
 import 'server-only';
 import { currentUser } from '@clerk/nextjs/server';
-import { createSupabaseServiceClient } from '@/lib/supabase/server';
+import { withService } from '@/lib/db';
+import { profiles } from '@/lib/db/schema';
 
 /**
  * Self-heal: ensure a public.profiles row exists for the current Clerk
@@ -8,9 +9,9 @@ import { createSupabaseServiceClient } from '@/lib/supabase/server';
  * (onboarding + post flows), so the app works even before the Clerk
  * webhook is wired up and recovers when the webhook misses an event.
  *
- * Uses the service role client (bypasses RLS) because the profiles table
- * has no INSERT policy for the user themselves — inserts only come from
- * the webhook / this self-heal.
+ * Uses withService (BYPASSRLS) because the profiles table has no INSERT
+ * policy for the user themselves — inserts only come from the webhook /
+ * this self-heal.
  *
  * History: this function also used to mirror each of Clerk's verified
  * external_accounts into a public.verifications table for trust badges.
@@ -21,8 +22,6 @@ import { createSupabaseServiceClient } from '@/lib/supabase/server';
 export async function syncClerkUserToSupabase(userId: string): Promise<void> {
   const user = await currentUser();
   if (!user || user.id !== userId) return;
-
-  const supabase = createSupabaseServiceClient();
 
   // Diagnostic log — surfaces in server terminal + Sentry breadcrumbs.
   // Triggered once per authenticated page load, so volume is bounded.
@@ -45,21 +44,19 @@ export async function syncClerkUserToSupabase(userId: string): Promise<void> {
       .trim() || (primaryEmail ? primaryEmail.split('@')[0] : null);
 
   // Insert the profile once; never overwrite once it exists (onboarding
-  // owns user-editable fields after creation). No default language here —
-  // the onboarding form requires the user to pick at least one before it
-  // will save, so the "language not set yet" window is bounded to the
-  // pre-onboarding pages (which don't render languages anyway).
-  await supabase
-    .from('profiles')
-    .insert({
-      id: user.id,
-      role: 'companion',
-      display_name: displayName,
-      photo_url: user.imageUrl ?? null,
-      email: primaryEmail,
-    })
-    .then(
-      () => undefined,
-      () => undefined, // ignore duplicate-key; the profile already exists
-    );
+  // owns user-editable fields after creation). onConflictDoNothing handles
+  // the duplicate-key on re-runs (this is the supabase `.then(ok, ignore)`
+  // pattern, expressed as a SQL no-op rather than a JS error swallow).
+  await withService((tx) =>
+    tx
+      .insert(profiles)
+      .values({
+        id: user.id,
+        role: 'companion',
+        displayName,
+        photoUrl: user.imageUrl ?? null,
+        email: primaryEmail,
+      })
+      .onConflictDoNothing(),
+  );
 }

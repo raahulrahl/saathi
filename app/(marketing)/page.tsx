@@ -10,7 +10,9 @@ import { TripCard, type TripCardData } from '@/components/trip-card';
 import { EmptyState } from '@/components/empty-state';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { and, desc, eq, gte } from 'drizzle-orm';
+import { withUser } from '@/lib/db';
+import { profiles, publicTrips } from '@/lib/db/schema';
 import { rankTrips, type RankableTrip, type Scored } from '@/lib/matching';
 import { isValidIata, AIRPORTS } from '@/lib/iata';
 import {
@@ -57,14 +59,16 @@ export default async function LandingPage({ searchParams }: HomeProps) {
   let viewerRole: 'family' | 'companion' | null = null;
   const { userId } = await auth();
   if (userId) {
-    const supabase = await createSupabaseServerClient();
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', userId)
-      .maybeSingle();
-    if (profile?.role === 'family' || profile?.role === 'companion') {
-      viewerRole = profile.role;
+    const role = await withUser(userId, async (tx) => {
+      const rows = await tx
+        .select({ role: profiles.role })
+        .from(profiles)
+        .where(eq(profiles.id, userId))
+        .limit(1);
+      return rows[0]?.role ?? null;
+    });
+    if (role === 'family' || role === 'companion') {
+      viewerRole = role;
     }
   }
 
@@ -229,23 +233,23 @@ export default async function LandingPage({ searchParams }: HomeProps) {
 // ─────────────────────────────────────────────────────────────────────
 
 async function WorldGlobeSection() {
-  const supabase = await createSupabaseServerClient();
   const today = new Date().toISOString().slice(0, 10);
 
   // Pull up to 50 upcoming open trips. Map each to its origin/destination
   // pair (drop layovers — too many arcs starts to look noisy on the globe).
-  // Dedupe so duplicate routes render once.
-  const { data } = await supabase
-    .from('public_trips')
-    .select('route')
-    .eq('status', 'open')
-    .gte('travel_date', today)
-    .limit(50);
+  // Dedupe so duplicate routes render once. Anon-readable via public_trips.
+  const data = await withUser(null, (tx) =>
+    tx
+      .select({ route: publicTrips.route })
+      .from(publicTrips)
+      .where(and(eq(publicTrips.status, 'open'), gte(publicTrips.travelDate, today)))
+      .limit(50),
+  );
 
   const seenPairs = new Set<string>();
   const routes: string[][] = [];
-  for (const row of data ?? []) {
-    const r = (row as { route: string[] }).route;
+  for (const row of data) {
+    const r = row.route as string[] | null;
     if (!r || r.length < 2) continue;
     const from = r[0]!;
     const to = r[r.length - 1]!;
@@ -298,25 +302,33 @@ async function WorldGlobeSection() {
 // ─────────────────────────────────────────────────────────────────────
 
 async function DiscoveryPanels() {
-  const supabase = await createSupabaseServerClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [recentRes, upcomingRes] = await Promise.all([
-    supabase
-      .from('public_trips')
-      .select('id, kind, route, travel_date, airline, created_at')
-      .eq('status', 'open')
-      .order('created_at', { ascending: false })
-      .limit(20),
-    supabase
-      .from('public_trips')
-      .select('route, travel_date')
-      .eq('status', 'open')
-      .gte('travel_date', today)
-      .limit(200),
-  ]);
+  // Sequential inside one anon tx — postgres.js serializes statements per
+  // connection, so Promise.all wouldn't have parallelized anyway.
+  const { recent, upcoming } = await withUser(null, async (tx) => {
+    const recent = await tx
+      .select({
+        id: publicTrips.id,
+        kind: publicTrips.kind,
+        route: publicTrips.route,
+        travel_date: publicTrips.travelDate,
+        airline: publicTrips.airline,
+        created_at: publicTrips.createdAt,
+      })
+      .from(publicTrips)
+      .where(eq(publicTrips.status, 'open'))
+      .orderBy(desc(publicTrips.createdAt))
+      .limit(20);
+    const upcoming = await tx
+      .select({ route: publicTrips.route, travel_date: publicTrips.travelDate })
+      .from(publicTrips)
+      .where(and(eq(publicTrips.status, 'open'), gte(publicTrips.travelDate, today)))
+      .limit(200);
+    return { recent, upcoming };
+  });
 
-  const recent = (recentRes.data ?? []) as Array<{
+  const recentRows = recent as Array<{
     id: string;
     kind: 'request' | 'offer';
     route: string[];
@@ -326,8 +338,8 @@ async function DiscoveryPanels() {
   }>;
 
   const routeCounts = new Map<string, number>();
-  for (const row of upcomingRes.data ?? []) {
-    const r = (row as { route: string[] }).route;
+  for (const row of upcoming) {
+    const r = row.route as string[] | null;
     if (!r || r.length < 2) continue;
     const key = `${r[0]}→${r[r.length - 1]}`;
     routeCounts.set(key, (routeCounts.get(key) ?? 0) + 1);
@@ -340,7 +352,7 @@ async function DiscoveryPanels() {
       return { from: from ?? '', to: to ?? '', count };
     });
 
-  const hasAnyData = topRoutes.length > 0 || recent.length > 0;
+  const hasAnyData = topRoutes.length > 0 || recentRows.length > 0;
 
   // When the DB is cold (zero trips), show an inviting empty state
   // instead of vanishing — a blank page between hero and marquee
@@ -419,20 +431,20 @@ async function DiscoveryPanels() {
       )}
 
       {/* Fresh activity */}
-      {recent.length > 0 && (
+      {recentRows.length > 0 && (
         <div>
           <div className="flex items-baseline justify-between gap-3">
             <div>
               <h2 className="font-serif text-2xl md:text-3xl">Fresh on Saathi</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                The {Math.min(recent.length, 8)} most recent trip{recent.length === 1 ? '' : 's'}{' '}
-                posted.
+                The {Math.min(recentRows.length, 8)} most recent trip
+                {recentRows.length === 1 ? '' : 's'} posted.
               </p>
             </div>
           </div>
 
           <ul className="mt-5 divide-y divide-oat rounded-2xl border border-oat bg-card">
-            {recent.slice(0, 8).map((trip) => {
+            {recentRows.slice(0, 8).map((trip) => {
               const from = trip.route[0] ?? '';
               const to = trip.route[trip.route.length - 1] ?? '';
               const viaCount = Math.max(trip.route.length - 2, 0);
@@ -514,27 +526,30 @@ async function Results({
   flightNumbers: string[];
   userId: string | null;
 }) {
-  const supabase = await createSupabaseServerClient();
-  const viewer: ViewerProfile = await fetchViewerProfile(supabase, userId);
-  const { data: trips, error } = await fetchTripsForSearch(supabase, {
-    from,
-    to,
-    date,
-    flightNumbers,
-    dateWindowDays: DEFAULT_DATE_WINDOW_DAYS,
-  });
-
-  if (error) {
+  let viewer: ViewerProfile;
+  let enriched: Awaited<ReturnType<typeof enrichTripsWithProfiles>>;
+  try {
+    ({ viewer, enriched } = await withUser(userId, async (tx) => {
+      const viewer = await fetchViewerProfile(tx, userId);
+      const trips = await fetchTripsForSearch(tx, {
+        from,
+        to,
+        date,
+        flightNumbers,
+        dateWindowDays: DEFAULT_DATE_WINDOW_DAYS,
+      });
+      const enriched = await enrichTripsWithProfiles(tx, trips);
+      return { viewer, enriched };
+    }));
+  } catch (err) {
     return (
       <div className="container py-10">
         <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
-          Couldn&apos;t load trips: {error.message}
+          Couldn&apos;t load trips: {(err as Error).message}
         </div>
       </div>
     );
   }
-
-  const enriched = await enrichTripsWithProfiles(supabase, trips ?? []);
   const ranked = rankTrips(enriched, {
     origin: from,
     destination: to,

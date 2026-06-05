@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
+import { asc, desc, eq } from 'drizzle-orm';
 import { requireUserId } from '@/lib/auth-guard';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { withUser } from '@/lib/db';
+import { profileLanguages } from '@/lib/db/schema';
 import { TripPostClient } from '@/components/trip-post-client';
 
 export const metadata: Metadata = { title: 'New request' };
@@ -11,15 +13,15 @@ interface PageProps {
 
 export default async function NewRequestPage({ searchParams }: PageProps) {
   const { from = '', to = '', date = '' } = await searchParams;
-  const supabase = await createSupabaseServerClient();
   const userId = await requireUserId('/dashboard/new/request');
 
-  const { data: langs } = await supabase
-    .from('profile_languages')
-    .select('language, is_primary')
-    .eq('profile_id', userId)
-    .order('is_primary', { ascending: false })
-    .order('language', { ascending: true });
+  const langs = await withUser(userId, (tx) =>
+    tx
+      .select({ language: profileLanguages.language, isPrimary: profileLanguages.isPrimary })
+      .from(profileLanguages)
+      .where(eq(profileLanguages.profileId, userId))
+      .orderBy(desc(profileLanguages.isPrimary), asc(profileLanguages.language)),
+  );
 
   return (
     <div className="container max-w-6xl py-10">
@@ -39,7 +41,7 @@ export default async function NewRequestPage({ searchParams }: PageProps) {
 
       <TripPostClient
         kind="request"
-        profileLanguages={(langs ?? []).map((l) => l.language)}
+        profileLanguages={langs.map((l) => l.language)}
         defaults={{
           ...(from && to ? { route: [from.toUpperCase(), to.toUpperCase()] } : {}),
           ...(date ? { travel_date: date } : {}),

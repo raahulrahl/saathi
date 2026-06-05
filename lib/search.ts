@@ -1,6 +1,8 @@
 import 'server-only';
 
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { and, eq, gte, inArray, lte, or } from 'drizzle-orm';
+import type { DbTx } from '@/lib/db';
+import { profileLanguages, profiles, publicProfiles, publicTrips, tripLegs } from '@/lib/db/schema';
 import type { TripCardData } from '@/components/trip-card';
 import { dateWindow } from '@/lib/dates';
 import type { RankableTrip } from '@/lib/matching';
@@ -10,9 +12,16 @@ import type { RankableTrip } from '@/lib/matching';
 export { dateWindow };
 
 /**
- * Server-side search helpers. Extracted from `app/search/page.tsx` so the
- * page file can stay focused on the route shape + rendering, and so the
- * peek widget / any future search surface can share the same primitives.
+ * Server-side search helpers. Each accepts a `DbTx` — callers wrap with
+ * `withUser(userId | null, tx => …)` (role = anon | authenticated). The
+ * RLS policies + `security_invoker=true` on the views do the rest.
+ *
+ * History (post-Supabase): the parallel `Promise.all` in fetchViewerProfile
+ * has been sequentialized. postgres.js serializes statements within a
+ * transaction, so issuing two queries via Promise.all on the same tx
+ * doesn't actually parallelize — and protocol-level interleaving on a
+ * single connection is unsafe. Sub-millisecond impact at our scale on
+ * two indexed lookups.
  */
 
 // A ±1 day window around the user's chosen date. The previous ±3 days
@@ -38,29 +47,29 @@ export interface ViewerProfile {
  * hydrated yet — both are legitimate states during a first anonymous
  * visit or right after sign-up before the self-heal fires.
  */
-export async function fetchViewerProfile(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any, any, any>,
-  userId: string | null,
-): Promise<ViewerProfile> {
+export async function fetchViewerProfile(tx: DbTx, userId: string | null): Promise<ViewerProfile> {
   if (!userId) return { role: null, languages: [], primaryLanguage: null };
-  // profiles + profile_languages are two tables post-0011. Parallel
-  // queries — they're independent and the viewer-profile fetch sits on
-  // the search page's critical path, so we don't want a serial round-trip.
-  const [{ data: profile }, { data: langs }] = await Promise.all([
-    supabase.from('profiles').select('role').eq('id', userId).maybeSingle(),
-    supabase.from('profile_languages').select('language, is_primary').eq('profile_id', userId),
-  ]);
+  const profileRows = await tx
+    .select({ role: profiles.role })
+    .from(profiles)
+    .where(eq(profiles.id, userId))
+    .limit(1);
+  const profile = profileRows[0] ?? null;
   if (!profile) return { role: null, languages: [], primaryLanguage: null };
+
+  const langRows = await tx
+    .select({ language: profileLanguages.language, isPrimary: profileLanguages.isPrimary })
+    .from(profileLanguages)
+    .where(eq(profileLanguages.profileId, userId));
+
   const role =
     profile.role === 'family' || profile.role === 'companion'
       ? (profile.role as 'family' | 'companion')
       : null;
-  const rows = langs ?? [];
   return {
     role,
-    languages: rows.map((r) => r.language),
-    primaryLanguage: rows.find((r) => r.is_primary)?.language ?? null,
+    languages: langRows.map((r) => r.language),
+    primaryLanguage: langRows.find((r) => r.isPrimary)?.language ?? null,
   };
 }
 
@@ -93,10 +102,9 @@ export interface TripQueryParams {
  * daily flight with a different airframe each day (bug 04).
  */
 export async function fetchTripsForSearch(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any, any, any>,
+  tx: DbTx,
   params: TripQueryParams,
-) {
+): Promise<PublicTripRow[]> {
   const windowDays = params.dateWindowDays ?? DEFAULT_DATE_WINDOW_DAYS;
   const { start, end } = dateWindow(params.date, windowDays);
 
@@ -104,50 +112,85 @@ export async function fetchTripsForSearch(
   const candidateIds = new Set<string>();
 
   if (params.flightNumbers.length > 0) {
-    const { data: flightHits } = await supabase
-      .from('trip_legs')
-      .select('trip_id')
-      .in('flight_number', params.flightNumbers)
-      .gte('travel_date', start)
-      .lte('travel_date', end);
-    for (const row of flightHits ?? []) candidateIds.add(row.trip_id);
+    const flightHits = await tx
+      .select({ tripId: tripLegs.tripId })
+      .from(tripLegs)
+      .where(
+        and(
+          inArray(tripLegs.flightNumber, params.flightNumbers),
+          gte(tripLegs.travelDate, start),
+          lte(tripLegs.travelDate, end),
+        ),
+      );
+    for (const row of flightHits) candidateIds.add(row.tripId);
   }
 
   // origin=from OR destination=to — covers end-to-end matches AND
   // partial-leg helpers (a companion on just the DOH→AMS leg of a
   // CCU→DOH→AMS request shows up via destination=AMS).
-  const { data: odHits } = await supabase
-    .from('trip_legs')
-    .select('trip_id')
-    .or(`origin.eq.${params.from},destination.eq.${params.to}`)
-    .gte('travel_date', start)
-    .lte('travel_date', end);
-  for (const row of odHits ?? []) candidateIds.add(row.trip_id);
+  const odHits = await tx
+    .select({ tripId: tripLegs.tripId })
+    .from(tripLegs)
+    .where(
+      and(
+        or(eq(tripLegs.origin, params.from), eq(tripLegs.destination, params.to)),
+        gte(tripLegs.travelDate, start),
+        lte(tripLegs.travelDate, end),
+      ),
+    );
+  for (const row of odHits) candidateIds.add(row.tripId);
 
-  // No candidates? Return a Supabase-shaped empty result so callers
-  // that destructure `{ data, error }` keep working.
-  if (candidateIds.size === 0) {
-    return { data: [] as unknown[], error: null } as Awaited<ReturnType<typeof buildTripSelect>>;
-  }
+  if (candidateIds.size === 0) return [];
 
   // ── Step 2. Fetch the candidate trips with full display columns. ───
-  return buildTripSelect(supabase, Array.from(candidateIds));
+  return buildTripSelect(tx, Array.from(candidateIds));
 }
 
-function buildTripSelect(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any, any, any>,
-  tripIds: string[],
-) {
-  return supabase
-    .from('public_trips')
-    .select(
-      `id, user_id, kind, route, travel_date, airline, flight_numbers,
-       languages, gender_preference, help_categories, thank_you_eur, notes,
-       status, traveller_age_bands, traveller_count, created_at`,
-    )
-    .in('id', tripIds)
-    .eq('status', 'open');
+/** Row shape returned by the public_trips select. Exported for callers
+ *  that need to consume the trip rows independently of `enrichTripsWithProfiles`. */
+export interface PublicTripRow {
+  id: string;
+  user_id: string;
+  kind: 'request' | 'offer';
+  route: string[];
+  travel_date: string;
+  airline: string | null;
+  flight_numbers: string[] | null;
+  languages: string[];
+  gender_preference: 'any' | 'male' | 'female' | null;
+  help_categories: string[];
+  thank_you_eur: number | null;
+  status: 'open' | 'matched' | 'completed' | 'cancelled';
+  traveller_age_bands: string[];
+  traveller_count: number;
+  created_at: string;
+}
+
+async function buildTripSelect(tx: DbTx, tripIds: string[]): Promise<PublicTripRow[]> {
+  const rows = await tx
+    .select({
+      id: publicTrips.id,
+      user_id: publicTrips.userId,
+      kind: publicTrips.kind,
+      route: publicTrips.route,
+      travel_date: publicTrips.travelDate,
+      airline: publicTrips.airline,
+      flight_numbers: publicTrips.flightNumbers,
+      languages: publicTrips.languages,
+      gender_preference: publicTrips.genderPreference,
+      help_categories: publicTrips.helpCategories,
+      thank_you_eur: publicTrips.thankYouEur,
+      status: publicTrips.status,
+      traveller_age_bands: publicTrips.travellerAgeBands,
+      traveller_count: publicTrips.travellerCount,
+      created_at: publicTrips.createdAt,
+    })
+    .from(publicTrips)
+    .where(and(inArray(publicTrips.id, tripIds), eq(publicTrips.status, 'open')));
+  // The view columns are inferred nullable (drizzle-kit pulls views as
+  // nullable); the underlying base columns aren't, and our app contracts
+  // them as required. Cast at the boundary.
+  return rows as unknown as PublicTripRow[];
 }
 
 /** Minimal profile shape needed to render a trip card. */
@@ -168,26 +211,30 @@ export interface TripPosterProfile {
  * requests vs offers in the UI.
  */
 export async function enrichTripsWithProfiles(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any, any, any>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  trips: readonly any[],
+  tx: DbTx,
+  trips: readonly PublicTripRow[],
 ): Promise<Array<RankableTrip & { kind: 'request' | 'offer'; card: TripCardData }>> {
   const userIds = Array.from(new Set(trips.map((tr) => tr.user_id)));
   const profilesById = new Map<string, TripPosterProfile>();
 
   if (userIds.length > 0) {
-    const { data: ps } = await supabase
-      .from('public_profiles')
-      .select('id, display_name, photo_url, primary_language')
-      .in('id', userIds);
-    (ps ?? []).forEach((p) =>
+    const ps = await tx
+      .select({
+        id: publicProfiles.id,
+        displayName: publicProfiles.displayName,
+        photoUrl: publicProfiles.photoUrl,
+        primaryLanguage: publicProfiles.primaryLanguage,
+      })
+      .from(publicProfiles)
+      .where(inArray(publicProfiles.id, userIds));
+    for (const p of ps) {
+      if (!p.id) continue;
       profilesById.set(p.id, {
-        display_name: p.display_name,
-        photo_url: p.photo_url,
-        primary_language: p.primary_language,
-      }),
-    );
+        display_name: p.displayName,
+        photo_url: p.photoUrl,
+        primary_language: p.primaryLanguage ?? '',
+      });
+    }
   }
 
   return trips.map((tr) => {

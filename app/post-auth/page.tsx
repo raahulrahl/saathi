@@ -1,7 +1,9 @@
 import { redirect } from 'next/navigation';
+import { eq, sql } from 'drizzle-orm';
 import { requireUserId } from '@/lib/auth-guard';
 import { syncClerkUserToSupabase } from '@/lib/clerk-sync';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { withUser } from '@/lib/db';
+import { profileLanguages } from '@/lib/db/schema';
 
 /**
  * Post-authentication landing page.
@@ -26,13 +28,15 @@ export default async function PostAuthPage() {
   // Self-heal: ensure a profile row exists.
   await syncClerkUserToSupabase(userId);
 
-  const supabase = await createSupabaseServerClient();
-  const { count } = await supabase
-    .from('profile_languages')
-    .select('language', { count: 'exact', head: true })
-    .eq('profile_id', userId);
+  const count = await withUser(userId, async (tx) => {
+    const rows = await tx
+      .select({ c: sql<number>`count(*)::int` })
+      .from(profileLanguages)
+      .where(eq(profileLanguages.profileId, userId));
+    return rows[0]?.c ?? 0;
+  });
 
-  if (!count || count === 0) {
+  if (!count) {
     redirect('/onboarding');
   }
 

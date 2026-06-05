@@ -1,7 +1,9 @@
 import 'server-only';
 
 import { createHash, randomInt } from 'node:crypto';
-import { createSupabaseServiceClient } from '@/lib/supabase/server';
+import { eq } from 'drizzle-orm';
+import { withService } from '@/lib/db';
+import { profiles } from '@/lib/db/schema';
 
 /**
  * SMS OTP verification via Twilio Messages API.
@@ -22,7 +24,6 @@ import { createSupabaseServiceClient } from '@/lib/supabase/server';
  *   TWILIO_ACCOUNT_SID
  *   TWILIO_AUTH_TOKEN
  *   TWILIO_SMS_FROM          — E.164 Twilio number, e.g. +15551234567
- *   SUPABASE_SERVICE_ROLE_KEY
  */
 
 function generateOtp(): string {
@@ -92,26 +93,30 @@ export async function startSmsVerification(userId: string, toE164: string): Prom
   const hashed = hashOtp(toE164, code);
   const expiresAt = new Date(Date.now() + OTP_TTL_SECONDS * 1000).toISOString();
 
-  const supabase = createSupabaseServiceClient();
-
-  const { error: stageError } = await supabase
-    .from('profiles')
-    .update({ whatsapp_otp_hash: hashed, whatsapp_otp_expires_at: expiresAt })
-    .eq('id', userId);
-
-  if (stageError) throw new Error(`Could not stage OTP: ${stageError.message}`);
+  try {
+    await withService((tx) =>
+      tx
+        .update(profiles)
+        .set({ whatsappOtpHash: hashed, whatsappOtpExpiresAt: expiresAt })
+        .where(eq(profiles.id, userId)),
+    );
+  } catch (err) {
+    throw new Error(`Could not stage OTP: ${(err as Error).message}`);
+  }
 
   const sent = await sendSmsOtp(toE164, code);
   if (!sent.ok) {
     // Clean up so a retry isn't blocked by the stale hash
-    await supabase
-      .from('profiles')
-      .update({ whatsapp_otp_hash: null, whatsapp_otp_expires_at: null })
-      .eq('id', userId)
-      .then(
-        () => undefined,
-        () => undefined,
+    try {
+      await withService((tx) =>
+        tx
+          .update(profiles)
+          .set({ whatsappOtpHash: null, whatsappOtpExpiresAt: null })
+          .where(eq(profiles.id, userId)),
       );
+    } catch {
+      // best-effort
+    }
     throw new Error(sent.detail);
   }
 

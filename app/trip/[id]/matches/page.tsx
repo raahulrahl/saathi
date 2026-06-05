@@ -12,8 +12,16 @@ import {
   type ExistingRequestState,
 } from '@/components/matches/companion-card';
 import type { FamilyTripSummary } from '@/components/matches/intro-modal';
+import { and, eq, inArray, or } from 'drizzle-orm';
 import { requireUserId } from '@/lib/auth-guard';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { withUser } from '@/lib/db';
+import {
+  matchRequests,
+  matches as matchesTbl,
+  profileReviewStats,
+  publicProfiles,
+  trips as tripsTbl,
+} from '@/lib/db/schema';
 import {
   DEFAULT_DATE_WINDOW_DAYS,
   enrichTripsWithProfiles,
@@ -55,15 +63,26 @@ interface MatchesPageProps {
 
 export default async function MatchesPage({ params }: MatchesPageProps) {
   const { id } = await params;
-  const supabase = await createSupabaseServerClient();
   const userId = await requireUserId(`/trip/${id}/matches`);
 
   // ── 1. Load the trip, verify ownership ──────────────────────────────
-  const { data: trip } = await supabase
-    .from('trips')
-    .select('id, user_id, kind, route, travel_date, flight_numbers, help_categories, status')
-    .eq('id', id)
-    .maybeSingle();
+  const trip = await withUser(userId, async (tx) => {
+    const rows = await tx
+      .select({
+        id: tripsTbl.id,
+        user_id: tripsTbl.userId,
+        kind: tripsTbl.kind,
+        route: tripsTbl.route,
+        travel_date: tripsTbl.travelDate,
+        flight_numbers: tripsTbl.flightNumbers,
+        help_categories: tripsTbl.helpCategories,
+        status: tripsTbl.status,
+      })
+      .from(tripsTbl)
+      .where(eq(tripsTbl.id, id))
+      .limit(1);
+    return rows[0] ?? null;
+  });
   if (!trip) notFound();
   if (trip.user_id !== userId) redirect(`/trip/${id}`);
 
@@ -92,24 +111,22 @@ export default async function MatchesPage({ params }: MatchesPageProps) {
     );
   }
 
-  // ── 2. Candidate lookup via the leg-based matcher ───────────────────
-  const { data: candidates } = await fetchTripsForSearch(supabase, {
-    from: origin,
-    to: destination,
-    date: trip.travel_date,
-    flightNumbers,
-    dateWindowDays: DEFAULT_DATE_WINDOW_DAYS,
+  // ── 2-3. Candidate lookup, enrichment, viewer profile — all in one tx
+  const { enriched, viewer } = await withUser(userId, async (tx) => {
+    const candidates = await fetchTripsForSearch(tx, {
+      from: origin,
+      to: destination,
+      date: trip.travel_date,
+      flightNumbers,
+      dateWindowDays: DEFAULT_DATE_WINDOW_DAYS,
+    });
+    const opposing = candidates.filter(
+      (t) => t.kind === 'offer' && t.user_id !== userId && t.status === 'open',
+    );
+    const enriched = await enrichTripsWithProfiles(tx, opposing);
+    const viewer = await fetchViewerProfile(tx, userId);
+    return { enriched, viewer };
   });
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const raw = (candidates ?? []) as any[];
-  const opposing = raw.filter(
-    (t) => t.kind === 'offer' && t.user_id !== userId && t.status === 'open',
-  );
-
-  // ── 3. Enrich, rank, dedupe ─────────────────────────────────────────
-  const enriched = await enrichTripsWithProfiles(supabase, opposing);
-  const viewer = await fetchViewerProfile(supabase, userId);
   const criteria: SearchCriteria = {
     origin,
     destination,
@@ -138,61 +155,70 @@ export default async function MatchesPage({ params }: MatchesPageProps) {
     );
   }
 
-  // ── 4. Sidecar data for the cards (bio, verifications, reviews) ────
+  // ── 4. Sidecar data for the cards (bio, reviews, requests, matches) ─
+  // Sequential inside one user tx. Note: `verifications` was dropped in
+  // 0009 — verifiedChannels is always empty now. The card UI handles
+  // empty arrays gracefully.
   const companionUserIds = uniqueCandidates.map((c) => c.trip.user_id);
   const companionTripIds = uniqueCandidates.map((c) => c.trip.id);
 
-  const [profilesRes, verificationsRes, reviewsRes, sentRes, matchesRes] = await Promise.all([
-    supabase.from('public_profiles').select('id, bio').in('id', companionUserIds),
-    supabase
-      .from('public_verifications')
-      .select('user_id, channel')
-      .in('user_id', companionUserIds),
-    supabase
-      .from('profile_review_stats')
-      .select('user_id, review_count, average_rating')
-      .in('user_id', companionUserIds),
-    supabase
-      .from('match_requests')
-      .select('trip_id, status')
-      .eq('requester_id', userId)
-      .in('trip_id', companionTripIds),
+  const sidecar = await withUser(userId, async (tx) => {
+    const profilesData = await tx
+      .select({ id: publicProfiles.id, bio: publicProfiles.bio })
+      .from(publicProfiles)
+      .where(inArray(publicProfiles.id, companionUserIds));
+    const reviewsData = await tx
+      .select({
+        user_id: profileReviewStats.userId,
+        review_count: profileReviewStats.reviewCount,
+        average_rating: profileReviewStats.averageRating,
+      })
+      .from(profileReviewStats)
+      .where(inArray(profileReviewStats.userId, companionUserIds));
+    const sentData = await tx
+      .select({ trip_id: matchRequests.tripId, status: matchRequests.status })
+      .from(matchRequests)
+      .where(
+        and(eq(matchRequests.requesterId, userId), inArray(matchRequests.tripId, companionTripIds)),
+      );
     // Pull any accepted match row so the status pill can deep-link.
-    supabase
-      .from('matches')
-      .select('id, trip_id')
-      .in('trip_id', companionTripIds)
-      .or(`poster_id.eq.${userId},requester_id.eq.${userId}`),
-  ]);
+    const matchesData = await tx
+      .select({ id: matchesTbl.id, trip_id: matchesTbl.tripId })
+      .from(matchesTbl)
+      .where(
+        and(
+          inArray(matchesTbl.tripId, companionTripIds),
+          or(eq(matchesTbl.posterId, userId), eq(matchesTbl.requesterId, userId)),
+        ),
+      );
+    return { profilesData, reviewsData, sentData, matchesData };
+  });
 
   const bioByUser = new Map<string, string | null>();
-  for (const p of profilesRes.data ?? []) bioByUser.set(p.id, p.bio);
+  for (const p of sidecar.profilesData) if (p.id) bioByUser.set(p.id, p.bio);
 
+  // verifiedChannels: always empty (verifications dropped in 0009).
   const channelsByUser = new Map<string, string[]>();
-  for (const v of verificationsRes.data ?? []) {
-    const list = channelsByUser.get(v.user_id) ?? [];
-    list.push(v.channel);
-    channelsByUser.set(v.user_id, list);
-  }
 
   const reviewStatsByUser = new Map<
     string,
     { review_count: number; average_rating: number | null }
   >();
-  for (const r of reviewsRes.data ?? []) {
+  for (const r of sidecar.reviewsData) {
+    if (!r.user_id) continue;
     reviewStatsByUser.set(r.user_id, {
-      review_count: r.review_count,
-      average_rating: r.average_rating,
+      review_count: r.review_count ?? 0,
+      average_rating: r.average_rating != null ? Number(r.average_rating) : null,
     });
   }
 
   const sentByTrip = new Map<string, ExistingRequestState['status']>();
-  for (const s of sentRes.data ?? []) {
+  for (const s of sidecar.sentData) {
     sentByTrip.set(s.trip_id, s.status as ExistingRequestState['status']);
   }
 
   const matchIdByTrip = new Map<string, string>();
-  for (const m of matchesRes.data ?? []) matchIdByTrip.set(m.trip_id, m.id);
+  for (const m of sidecar.matchesData) matchIdByTrip.set(m.trip_id, m.id);
 
   // ── 5. Build family-trip summary for the intro modal template ──────
   const familyTripSummary: FamilyTripSummary = {
