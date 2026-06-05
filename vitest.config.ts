@@ -6,7 +6,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     include: ['**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['node_modules', '.next', 'supabase'],
+    exclude: ['node_modules', '.next', 'supabase', '.claude/**'],
   },
   resolve: {
     alias: {

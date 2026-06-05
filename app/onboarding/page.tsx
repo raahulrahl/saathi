@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
+import { asc, desc, eq, sql } from 'drizzle-orm';
 import { requireUserId } from '@/lib/auth-guard';
 import { syncClerkUserToSupabase } from '@/lib/clerk-sync';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { withUser } from '@/lib/db';
+import { profileLanguages, profiles } from '@/lib/db/schema';
 import { OnboardingForm } from './onboarding-form';
 
 interface OnboardingPageProps {
@@ -27,9 +29,8 @@ export const metadata: Metadata = { title: 'Welcome · Saathi' };
  * No gating, no verification channels, no "you need 2 more links." Anyone
  * signed in and through this form can post / request / browse.
  *
- * The verifications table is still maintained behind the scenes by the
- * Clerk webhook + self-heal — we use it for trust badges on profile
- * cards, not as a gate.
+ * The verifications table was dropped in 0009 — trust badges are no
+ * longer surfaced.
  */
 export default async function OnboardingPage({ searchParams }: OnboardingPageProps) {
   const { edit } = await searchParams;
@@ -38,45 +39,55 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
   // Self-heal: create/update profile row from Clerk state.
   await syncClerkUserToSupabase(userId);
 
-  const supabase = await createSupabaseServerClient();
   // Belt-and-braces: if a returning user lands here (stale env var,
   // legacy Clerk session, direct URL), check whether they've already
   // completed onboarding by looking at profile_languages — those rows
   // are ONLY written by the onboarding server action.
   // ?edit=1 from dashboard bypasses this so profile editing still works.
   if (edit !== '1') {
-    const { count } = await supabase
-      .from('profile_languages')
-      .select('language', { count: 'exact', head: true })
-      .eq('profile_id', userId);
-    if (count && count > 0) {
+    const langCount = await withUser(userId, async (tx) => {
+      const rows = await tx
+        .select({ c: sql<number>`count(*)::int` })
+        .from(profileLanguages)
+        .where(eq(profileLanguages.profileId, userId));
+      return rows[0]?.c ?? 0;
+    });
+    if (langCount > 0) {
       redirect('/dashboard');
     }
   }
+
   // Profile + languages come from two tables now (normalised join).
-  // Run both reads in parallel — they don't depend on each other and
-  // this is the onboarding page's critical path on every render.
-  const [{ data: profile }, { data: langs }] = await Promise.all([
-    supabase
-      .from('profiles')
-      .select(
-        `id, role, display_name, bio,
-         whatsapp_number, whatsapp_validated_at,
-         linkedin_url, facebook_url, twitter_url, instagram_url`,
-      )
-      .eq('id', userId)
-      .maybeSingle(),
-    supabase
-      .from('profile_languages')
-      .select('language, is_primary')
-      .eq('profile_id', userId)
-      .order('is_primary', { ascending: false })
-      .order('language', { ascending: true }),
-  ]);
+  // Sequential inside one user tx — postgres.js serializes within a tx
+  // anyway (Promise.all wouldn't have parallelized).
+  const { profile, langs } = await withUser(userId, async (tx) => {
+    const profileRows = await tx
+      .select({
+        id: profiles.id,
+        role: profiles.role,
+        display_name: profiles.displayName,
+        bio: profiles.bio,
+        whatsapp_number: profiles.whatsappNumber,
+        whatsapp_validated_at: profiles.whatsappValidatedAt,
+        linkedin_url: profiles.linkedinUrl,
+        facebook_url: profiles.facebookUrl,
+        twitter_url: profiles.twitterUrl,
+        instagram_url: profiles.instagramUrl,
+      })
+      .from(profiles)
+      .where(eq(profiles.id, userId))
+      .limit(1);
+    const langs = await tx
+      .select({ language: profileLanguages.language, isPrimary: profileLanguages.isPrimary })
+      .from(profileLanguages)
+      .where(eq(profileLanguages.profileId, userId))
+      .orderBy(desc(profileLanguages.isPrimary), asc(profileLanguages.language));
+    return { profile: profileRows[0] ?? null, langs };
+  });
 
   // Surface languages primary-first so the form's first chip matches
   // the primary selection convention.
-  const selectedLanguages = (langs ?? []).map((l) => l.language);
+  const selectedLanguages = langs.map((l) => l.language);
 
   // The same form doubles as "edit your profile" — the dashboard has an
   // Edit button that links back here. If the user already has a role set

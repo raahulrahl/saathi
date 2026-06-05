@@ -1,5 +1,7 @@
 import { ImageResponse } from 'next/og';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { eq } from 'drizzle-orm';
+import { withUser } from '@/lib/db';
+import { publicProfiles, publicTrips } from '@/lib/db/schema';
 
 export const runtime = 'nodejs';
 export const contentType = 'image/png';
@@ -11,21 +13,32 @@ interface Props {
 
 export default async function TripOgImage({ params }: Props) {
   const { id } = await params;
-  const supabase = await createSupabaseServerClient();
 
-  const { data: trip } = await supabase
-    .from('public_trips')
-    .select('route, travel_date, airline, kind, notes, user_id')
-    .eq('id', id)
-    .maybeSingle();
-
-  const { data: profile } = trip?.user_id
-    ? await supabase
-        .from('public_profiles')
-        .select('display_name, photo_url')
-        .eq('id', trip.user_id)
-        .maybeSingle()
-    : { data: null };
+  // Anon-readable through public_trips / public_profiles (security_invoker views).
+  // Note: public_trips doesn't expose `notes` (revoked from anon in 0021).
+  // Renders an empty notes snippet for unauthenticated OG crawls, matching the
+  // intent of the column-level revoke.
+  const { trip, profile } = await withUser(null, async (tx) => {
+    const tripRows = await tx
+      .select({
+        route: publicTrips.route,
+        travel_date: publicTrips.travelDate,
+        airline: publicTrips.airline,
+        kind: publicTrips.kind,
+        user_id: publicTrips.userId,
+      })
+      .from(publicTrips)
+      .where(eq(publicTrips.id, id))
+      .limit(1);
+    const trip = tripRows[0] ?? null;
+    if (!trip?.user_id) return { trip, profile: null };
+    const profileRows = await tx
+      .select({ display_name: publicProfiles.displayName, photo_url: publicProfiles.photoUrl })
+      .from(publicProfiles)
+      .where(eq(publicProfiles.id, trip.user_id))
+      .limit(1);
+    return { trip, profile: profileRows[0] ?? null };
+  });
 
   const displayName = profile?.display_name ?? 'Someone';
   const photoUrl = profile?.photo_url ?? null;
@@ -45,13 +58,10 @@ export default async function TripOgImage({ params }: Props) {
   // Headline copy
   const headline = isRequest ? `Looking for a companion` : `${firstName} is offering to help`;
 
-  // Short notes (max 90 chars)
-  const notesSnippet =
-    trip?.notes && trip.notes.length > 0
-      ? trip.notes.length > 90
-        ? trip.notes.slice(0, 87) + '…'
-        : trip.notes
-      : null;
+  // Short notes: public_trips doesn't expose notes to anon (0021), so this
+  // is always null on the OG path. The visual leaves room for it if the view
+  // ever surfaces it again.
+  const notesSnippet: string | null = null;
 
   // Fetch profile photo and inline as data URL. Satori (the engine next/og
   // uses) handles HTTPS URLs, but the data-URL path is more reliable when

@@ -3,16 +3,18 @@
 import { auth } from '@clerk/nextjs/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { eq } from 'drizzle-orm';
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import { z } from 'zod';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { withUser } from '@/lib/db';
+import { profileLanguages, profiles } from '@/lib/db/schema';
 import { lookupPhoneNumber } from '@/lib/verify';
 import { LANGUAGES } from '@/lib/languages';
 
 /**
  * Simplified onboarding write. Single form — role, name, languages,
- * WhatsApp number, social URLs, optional bio. Uses the Clerk-aware
- * Supabase client so RLS enforces owner-writes-only.
+ * WhatsApp number, social URLs, optional bio. Runs as the authenticated
+ * user so RLS enforces owner-writes-only.
  *
  * Validation mirrors the client form in onboarding-form.tsx:
  *   * libphonenumber-js re-parses the phone server-side. Client already
@@ -35,9 +37,6 @@ const OnboardingSchema = z
   .object({
     displayName: z.string().trim().min(1, 'Tell us what to call you.').max(60),
     role: z.enum(['family', 'companion']),
-    // Language fields accept only canonical values from lib/languages.ts —
-    // prevents "English (US)" / "english" / "Eng" silently failing to
-    // match "English" at the matching layer (bug L01).
     primaryLanguage: z.string().refine((v) => LANGUAGES.includes(v), {
       message: 'Pick a primary language from the list.',
     }),
@@ -107,72 +106,63 @@ export async function saveOnboardingProfile(
   // operational error. In both cases we accept the number based on the
   // libphonenumber-js check we already ran. lookup.valid === true = good.
 
-  const supabase = await createSupabaseServerClient();
-
   // Prefer Twilio's canonical E.164 when Lookup verified the number
   // (handles e.g. stripped leading zeros in national format), otherwise
   // use libphonenumber-js's normalisation.
   const finalPhone = lookup.valid === true ? lookup.e164 : normalisedPhone;
 
-  // Preserve whatsapp_validated_at ONLY if the user hasn't changed their
-  // phone number since it was last validated. If they've edited the
-  // number, clear the validated timestamp so the UI prompts them to
-  // re-run the OTP flow for the new one.
-  const { data: existing } = await supabase
-    .from('profiles')
-    .select('whatsapp_number, whatsapp_validated_at')
-    .eq('id', userId)
-    .maybeSingle();
+  // Whole save runs in one user-scoped transaction. Profile update +
+  // language wipe-and-insert are atomic — if the language insert fails,
+  // the profile change rolls back too.
+  try {
+    await withUser(userId, async (tx) => {
+      // Preserve whatsapp_validated_at ONLY if the user hasn't changed
+      // their phone since it was last validated.
+      const existingRows = await tx
+        .select({
+          whatsapp_number: profiles.whatsappNumber,
+          whatsapp_validated_at: profiles.whatsappValidatedAt,
+        })
+        .from(profiles)
+        .where(eq(profiles.id, userId))
+        .limit(1);
+      const existing = existingRows[0] ?? null;
+      const phoneUnchanged = existing?.whatsapp_number === finalPhone;
+      const preservedValidatedAt = phoneUnchanged ? existing?.whatsapp_validated_at : null;
 
-  const phoneUnchanged = existing?.whatsapp_number === finalPhone;
-  const preservedValidatedAt = phoneUnchanged ? existing?.whatsapp_validated_at : null;
+      await tx
+        .update(profiles)
+        .set({
+          displayName: parsed.data.displayName,
+          role: parsed.data.role,
+          whatsappNumber: finalPhone,
+          whatsappValidatedAt: preservedValidatedAt ?? null,
+          bio: parsed.data.bio,
+          linkedinUrl: parsed.data.linkedinUrl,
+          facebookUrl: parsed.data.facebookUrl,
+          twitterUrl: parsed.data.twitterUrl,
+          instagramUrl: parsed.data.instagramUrl,
+          onboardingComplete: true,
+        })
+        .where(eq(profiles.id, userId));
 
-  const { error } = await supabase
-    .from('profiles')
-    .update({
-      display_name: parsed.data.displayName,
-      role: parsed.data.role,
-      whatsapp_number: finalPhone,
-      whatsapp_validated_at: preservedValidatedAt,
-      bio: parsed.data.bio,
-      linkedin_url: parsed.data.linkedinUrl,
-      facebook_url: parsed.data.facebookUrl,
-      twitter_url: parsed.data.twitterUrl,
-      instagram_url: parsed.data.instagramUrl,
-      // Flip the L02 flag — at this point display_name, role,
-      // phone, and languages are all populated, so the user counts
-      // as actually onboarded for analytics / admin filters.
-      onboarding_complete: true,
-    })
-    .eq('id', userId);
+      // profile_languages is now the sole source of truth for who speaks
+      // what. Wipe + reinsert is simple and correct at our per-user volume
+      // (<10 rows). Inside the same tx, the wipe is rolled back if the
+      // insert fails.
+      await tx.delete(profileLanguages).where(eq(profileLanguages.profileId, userId));
 
-  if (error) {
-    return { ok: false, error: `Save failed: ${error.message}` };
-  }
-
-  // profile_languages is now the sole source of truth for who speaks
-  // what. Wipe + reinsert is simple and correct at our per-user volume
-  // (<10 rows). A failure here DOES fail the whole save — previously
-  // we swallowed it because profiles.languages was the authoritative
-  // cache, but that column is gone now, so a sync failure = no languages
-  // saved at all.
-  const { error: wipeError } = await supabase
-    .from('profile_languages')
-    .delete()
-    .eq('profile_id', userId);
-  if (wipeError) {
-    return { ok: false, error: `Save failed (languages wipe): ${wipeError.message}` };
-  }
-  const langRows = parsed.data.languages.map((language) => ({
-    profile_id: userId,
-    language,
-    is_primary: language === parsed.data.primaryLanguage,
-  }));
-  if (langRows.length > 0) {
-    const { error: langError } = await supabase.from('profile_languages').insert(langRows);
-    if (langError) {
-      return { ok: false, error: `Save failed (languages insert): ${langError.message}` };
-    }
+      if (parsed.data.languages.length > 0) {
+        const langRows = parsed.data.languages.map((language) => ({
+          profileId: userId,
+          language,
+          isPrimary: language === parsed.data.primaryLanguage,
+        }));
+        await tx.insert(profileLanguages).values(langRows);
+      }
+    });
+  } catch (err) {
+    return { ok: false, error: `Save failed: ${(err as Error).message}` };
   }
 
   revalidatePath('/dashboard');

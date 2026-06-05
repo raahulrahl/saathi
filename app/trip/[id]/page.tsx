@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { format, parseISO } from 'date-fns';
 import { ArrowRight, Calendar, ChevronRight, Info, MapPin, ShieldAlert } from 'lucide-react';
+import { eq } from 'drizzle-orm';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { LanguageChipRow } from '@/components/language-chip';
 import { RouteLine } from '@/components/route-line';
 import { TripShareButtons } from '@/components/trip-share-buttons';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { withUser } from '@/lib/db';
+import { profileReviewStats, publicProfiles, publicTrips } from '@/lib/db/schema';
 import { HELP_CATEGORIES } from '@/lib/languages';
 
 interface TripPageProps {
@@ -24,13 +26,20 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://getsaathi.com';
 
 export async function generateMetadata({ params }: TripPageProps): Promise<Metadata> {
   const { id } = await params;
-  const supabase = await createSupabaseServerClient();
-  const { data } = await supabase
-    .from('public_trips')
-    .select('route, travel_date, kind, airline')
-    .eq('id', id)
-    .maybeSingle();
-  if (!data) return { title: 'Trip not found' };
+  const data = await withUser(null, async (tx) => {
+    const rows = await tx
+      .select({
+        route: publicTrips.route,
+        travel_date: publicTrips.travelDate,
+        kind: publicTrips.kind,
+        airline: publicTrips.airline,
+      })
+      .from(publicTrips)
+      .where(eq(publicTrips.id, id))
+      .limit(1);
+    return rows[0] ?? null;
+  });
+  if (!data || !data.route || !data.travel_date) return { title: 'Trip not found' };
 
   const routeStr = data.route.join(' → ');
   const dateStr = format(parseISO(data.travel_date), 'd LLL yyyy');
@@ -51,8 +60,6 @@ export async function generateMetadata({ params }: TripPageProps): Promise<Metad
       url: pageUrl,
       siteName: 'Saathi',
       type: 'website',
-      // Next.js auto-adds the opengraph-image.tsx output here, but we can
-      // also be explicit so sharing previews work before the first crawl.
       images: [
         {
           url: `${SITE_URL}/trip/${id}/opengraph-image`,
@@ -74,29 +81,44 @@ export async function generateMetadata({ params }: TripPageProps): Promise<Metad
 export default async function TripPage({ params, searchParams }: TripPageProps) {
   const { id } = await params;
   const { new: isNewTrip } = await searchParams;
-  const supabase = await createSupabaseServerClient();
+  const { userId } = await auth();
 
-  const { data: trip } = await supabase.from('public_trips').select('*').eq('id', id).maybeSingle();
+  // Public read via public_trips (anon-readable). Then poster profile +
+  // review stats. RLS lets a match-participant see the underlying trip
+  // notes via the joined raw trips table — but we use public_trips here
+  // for parity with the previous behavior.
+  const data = await withUser(userId, async (tx) => {
+    const tripRows = await tx.select().from(publicTrips).where(eq(publicTrips.id, id)).limit(1);
+    const trip = tripRows[0] ?? null;
+    if (!trip || !trip.userId) return { trip, profile: null, reviewStats: null };
+    const profileRows = await tx
+      .select()
+      .from(publicProfiles)
+      .where(eq(publicProfiles.id, trip.userId))
+      .limit(1);
+    const statsRows = await tx
+      .select()
+      .from(profileReviewStats)
+      .where(eq(profileReviewStats.userId, trip.userId))
+      .limit(1);
+    return { trip, profile: profileRows[0] ?? null, reviewStats: statsRows[0] ?? null };
+  });
+
+  const trip = data.trip;
+  const profile = data.profile;
+  const reviewStats = data.reviewStats;
   if (!trip) notFound();
 
-  const [{ data: profile }, { data: reviewStats }] = await Promise.all([
-    supabase.from('public_profiles').select('*').eq('id', trip.user_id).maybeSingle(),
-    supabase.from('profile_review_stats').select('*').eq('user_id', trip.user_id).maybeSingle(),
-  ]);
-
-  const { userId } = await auth();
   const viewer = userId ?? null;
-  const isOwner = viewer === trip.user_id;
+  const isOwner = viewer === trip.userId;
   const isRequest = trip.kind === 'request';
   const helpLabels = new Map(HELP_CATEGORIES.map((h) => [h.key, h]));
 
   // Show the share prompt if this is the first landing after creation
   const showShareBanner = isOwner && isNewTrip === 'true';
-  // Canonical public URL for this trip — passed down so the share buttons
-  // always link to the production origin even when the dev is on localhost.
-  // Facebook/WhatsApp crawlers can't reach localhost, so without this the
-  // preview never loads.
   const pageUrl = `${SITE_URL}/trip/${id}`;
+  const route = trip.route ?? [];
+  const travelDate = trip.travelDate ?? '';
 
   return (
     <div className="container max-w-4xl py-8">
@@ -106,7 +128,7 @@ export default async function TripPage({ params, searchParams }: TripPageProps) 
         </Link>
         <ChevronRight className="size-3" />
         <span>
-          {trip.route[0]} → {trip.route[trip.route.length - 1]}
+          {route[0]} → {route[route.length - 1]}
         </span>
       </nav>
 
@@ -128,7 +150,7 @@ export default async function TripPage({ params, searchParams }: TripPageProps) 
           </p>
           <TripShareButtons
             tripId={id}
-            route={trip.route}
+            route={route}
             shareUrl={pageUrl}
             isRequest={isRequest}
             variant="banner"
@@ -146,11 +168,11 @@ export default async function TripPage({ params, searchParams }: TripPageProps) 
               {isRequest ? 'Companion wanted' : 'Available to help'}
             </h1>
             <div className="mt-3">
-              <RouteLine route={trip.route} />
+              <RouteLine route={route} />
             </div>
             <p className="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground">
               <Calendar className="size-4" />
-              {format(parseISO(trip.travel_date), 'EEEE, d LLLL yyyy')}
+              {travelDate ? format(parseISO(travelDate), 'EEEE, d LLLL yyyy') : ''}
               {trip.airline ? (
                 <>
                   <span className="mx-1">·</span>
@@ -159,9 +181,9 @@ export default async function TripPage({ params, searchParams }: TripPageProps) 
                 </>
               ) : null}
             </p>
-            {trip.flight_numbers && trip.flight_numbers.length > 0 ? (
+            {trip.flightNumbers && trip.flightNumbers.length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-1.5">
-                {trip.flight_numbers.map((fn: string) => (
+                {trip.flightNumbers.map((fn: string) => (
                   <Badge key={fn} variant="outline" className="font-mono">
                     ✈ {fn}
                   </Badge>
@@ -170,26 +192,26 @@ export default async function TripPage({ params, searchParams }: TripPageProps) 
             ) : null}
           </div>
 
-          {isRequest && trip.traveller_count > 0 ? (
+          {isRequest && (trip.travellerCount ?? 0) > 0 ? (
             <Card>
               <CardContent className="space-y-3 p-5">
                 <h2 className="font-serif text-lg">
-                  {trip.traveller_count === 1
+                  {trip.travellerCount === 1
                     ? 'About the traveller'
-                    : `${trip.traveller_count} travellers on this flight`}
+                    : `${trip.travellerCount} travellers on this flight`}
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  {trip.traveller_count === 1 ? (
+                  {trip.travellerCount === 1 ? (
                     <>
-                      Age band <b>{trip.traveller_age_bands[0] ?? '—'}</b>.
+                      Age band <b>{trip.travellerAgeBands?.[0] ?? '—'}</b>.
                     </>
                   ) : (
                     <>
                       Age bands:{' '}
-                      {trip.traveller_age_bands.map((b: string, i: number) => (
+                      {(trip.travellerAgeBands ?? []).map((b: string, i: number) => (
                         <span key={i}>
                           <b>{b}</b>
-                          {i < trip.traveller_age_bands.length - 1 ? ', ' : ''}
+                          {i < (trip.travellerAgeBands?.length ?? 0) - 1 ? ', ' : ''}
                         </span>
                       ))}
                       .
@@ -207,17 +229,17 @@ export default async function TripPage({ params, searchParams }: TripPageProps) 
             </h2>
             <div className="mt-3">
               <LanguageChipRow
-                languages={trip.languages}
-                primary={profile?.primary_language ?? null}
+                languages={trip.languages ?? []}
+                primary={profile?.primaryLanguage ?? null}
               />
             </div>
           </section>
 
-          {trip.help_categories && trip.help_categories.length > 0 ? (
+          {trip.helpCategories && trip.helpCategories.length > 0 ? (
             <section>
               <h2 className="font-serif text-xl">Help needed</h2>
               <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-                {trip.help_categories.map((k: string) => {
+                {trip.helpCategories.map((k: string) => {
                   const h = helpLabels.get(k);
                   return (
                     <li key={k} className="rounded-md border p-3">
@@ -232,17 +254,10 @@ export default async function TripPage({ params, searchParams }: TripPageProps) 
             </section>
           ) : null}
 
-          {trip.notes ? (
-            <section>
-              <h2 className="font-serif text-xl">Notes</h2>
-              <p className="mt-2 whitespace-pre-wrap text-sm">{trip.notes}</p>
-            </section>
-          ) : null}
-
-          {isRequest && trip.thank_you_eur ? (
+          {isRequest && trip.thankYouEur ? (
             <section className="bg-saffron-50 rounded-lg border p-4 text-sm">
-              <b>Thank-you: €{trip.thank_you_eur}.</b> Settled directly between family and companion
-              — Saathi never touches payments.
+              <b>Thank-you: €{trip.thankYouEur}.</b> Settled directly between family and companion —
+              Saathi never touches payments.
             </section>
           ) : null}
         </article>
@@ -250,12 +265,12 @@ export default async function TripPage({ params, searchParams }: TripPageProps) 
         <aside className="space-y-4">
           <Card>
             <CardContent className="space-y-4 p-5">
-              <Link href={`/profile/${trip.user_id}`} className="flex items-center gap-3">
+              <Link href={`/profile/${trip.userId}`} className="flex items-center gap-3">
                 <Avatar className="size-14">
-                  {profile?.photo_url ? (
+                  {profile?.photoUrl ? (
                     <AvatarImage asChild>
                       <Image
-                        src={profile.photo_url}
+                        src={profile.photoUrl}
                         alt=""
                         width={56}
                         height={56}
@@ -264,21 +279,21 @@ export default async function TripPage({ params, searchParams }: TripPageProps) 
                       />
                     </AvatarImage>
                   ) : null}
-                  <AvatarFallback>{(profile?.display_name ?? '??').slice(0, 2)}</AvatarFallback>
+                  <AvatarFallback>{(profile?.displayName ?? '??').slice(0, 2)}</AvatarFallback>
                 </Avatar>
                 <div>
-                  <div className="font-semibold">{profile?.display_name ?? 'Anonymous'}</div>
+                  <div className="font-semibold">{profile?.displayName ?? 'Anonymous'}</div>
                   <div className="text-xs capitalize text-muted-foreground">{profile?.role}</div>
                 </div>
               </Link>
 
-              {reviewStats?.review_count ? (
+              {reviewStats?.reviewCount ? (
                 <div className="text-sm">
-                  <span className="font-semibold">{reviewStats.average_rating}</span>
+                  <span className="font-semibold">{reviewStats.averageRating}</span>
                   <span className="text-muted-foreground">
                     {' '}
-                    ({reviewStats.review_count} review
-                    {reviewStats.review_count === 1 ? '' : 's'})
+                    ({reviewStats.reviewCount} review
+                    {reviewStats.reviewCount === 1 ? '' : 's'})
                   </span>
                 </div>
               ) : null}
@@ -294,7 +309,7 @@ export default async function TripPage({ params, searchParams }: TripPageProps) 
                   </div>
                   <TripShareButtons
                     tripId={id}
-                    route={trip.route}
+                    route={route}
                     shareUrl={pageUrl}
                     isRequest={isRequest}
                     variant="sidebar"
@@ -329,7 +344,7 @@ export default async function TripPage({ params, searchParams }: TripPageProps) 
               <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
               <p>
                 If something feels off,{' '}
-                <Link href={`/report?subject=${trip.user_id}`} className="underline">
+                <Link href={`/report?subject=${trip.userId}`} className="underline">
                   report this profile
                 </Link>
                 .

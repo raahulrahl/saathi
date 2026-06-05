@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Pencil, Plus, Send, Users } from 'lucide-react';
+import { and, asc, desc, eq, inArray, or } from 'drizzle-orm';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EmptyState } from '@/components/empty-state';
@@ -9,7 +10,14 @@ import { MyTripCard, type MyTrip } from '@/components/dashboard/my-trip-card';
 import { SentRequestCard, type SentRequest } from '@/components/dashboard/sent-request-card';
 import { MatchCard, type DashboardMatch } from '@/components/dashboard/match-card';
 import { requireUserId } from '@/lib/auth-guard';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { withUser } from '@/lib/db';
+import {
+  matchRequests,
+  matches as matchesTbl,
+  profiles,
+  publicProfiles,
+  trips as tripsTbl,
+} from '@/lib/db/schema';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -34,90 +42,140 @@ interface DashboardPageProps {
  * tab selection.
  */
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
-  const supabase = await createSupabaseServerClient();
   const uid = await requireUserId('/dashboard');
   const { welcome } = await searchParams;
   const showWelcomeBanner = welcome === '1';
 
-  // First fetch: the user's profile + their trips. We need the trip IDs
-  // before we can query match_requests targeting them. A filter like
-  // .eq('trip.user_id', uid) on a joined alias is supposed to work in
-  // PostgREST, but has produced silently-empty results in practice — so
-  // we switch to an explicit .in('trip_id', tripIds) filter instead.
-  const [profileRes, myTrips, outgoing, matches] = await Promise.all([
-    supabase.from('public_profiles').select('display_name').eq('id', uid).maybeSingle(),
-    supabase
-      .from('trips')
-      .select('id, kind, route, travel_date, status, airline')
-      .eq('user_id', uid)
-      .order('travel_date', { ascending: true }),
-    supabase
-      .from('match_requests')
-      .select(
-        `id, status, intro_message, created_at,
-         trip:trips!inner(id, kind, route, travel_date, user_id,
-           poster:profiles!trips_user_id_fkey(id, display_name, photo_url))`,
-      )
-      .eq('requester_id', uid)
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('matches')
-      .select(
-        `id, status, created_at, trip_id, poster_id, requester_id,
-         trip:trips!inner(route, travel_date, kind)`,
-      )
-      .or(`poster_id.eq.${uid},requester_id.eq.${uid}`)
-      .order('created_at', { ascending: false }),
-  ]);
+  // Single user-scoped tx for everything. The previous supabase code used
+  // foreign-key embed syntax (`trip:trips!inner(...)`) — here we do explicit
+  // joins and shape the rows on the JS side. Equivalent SQL, more readable.
+  const data = await withUser(uid, async (tx) => {
+    const profileRows = await tx
+      .select({ display_name: publicProfiles.displayName })
+      .from(publicProfiles)
+      .where(eq(publicProfiles.id, uid))
+      .limit(1);
 
-  const myTripRows = (myTrips.data ?? []) as unknown as MyTrip[];
-  const myTripIds = myTripRows.map((t) => t.id);
+    const myTripRows = (await tx
+      .select({
+        id: tripsTbl.id,
+        kind: tripsTbl.kind,
+        route: tripsTbl.route,
+        travel_date: tripsTbl.travelDate,
+        status: tripsTbl.status,
+        airline: tripsTbl.airline,
+      })
+      .from(tripsTbl)
+      .where(eq(tripsTbl.userId, uid))
+      .orderBy(asc(tripsTbl.travelDate))) as unknown as MyTrip[];
 
-  // Second fetch: pending requests targeting ANY of my trips. Embeds the
-  // requester profile via the base `profiles` table (not the view) so the
-  // FK detection works reliably.
-  const incomingRaw =
-    myTripIds.length === 0
-      ? { data: [], error: null }
-      : await supabase
-          .from('match_requests')
-          .select(
-            `id, status, intro_message, created_at, requester_id, trip_id,
-             requester:profiles!match_requests_requester_id_fkey(id, display_name, photo_url)`,
-          )
-          .in('trip_id', myTripIds)
-          .eq('status', 'pending')
-          .order('created_at', { ascending: false });
+    // Outgoing match_requests: join trip + poster profile.
+    const outgoing = await tx
+      .select({
+        id: matchRequests.id,
+        status: matchRequests.status,
+        intro_message: matchRequests.introMessage,
+        created_at: matchRequests.createdAt,
+        trip_id: tripsTbl.id,
+        trip_kind: tripsTbl.kind,
+        trip_route: tripsTbl.route,
+        trip_travel_date: tripsTbl.travelDate,
+        trip_user_id: tripsTbl.userId,
+        poster_id: profiles.id,
+        poster_display_name: profiles.displayName,
+        poster_photo_url: profiles.photoUrl,
+      })
+      .from(matchRequests)
+      .innerJoin(tripsTbl, eq(tripsTbl.id, matchRequests.tripId))
+      .innerJoin(profiles, eq(profiles.id, tripsTbl.userId))
+      .where(eq(matchRequests.requesterId, uid))
+      .orderBy(desc(matchRequests.createdAt));
 
-  // Surface any Supabase errors to the server log — silent empty results
-  // cost hours of debugging.
-  for (const [name, res] of [
-    ['myTrips', myTrips],
-    ['incomingRaw', incomingRaw],
-    ['outgoing', outgoing],
-    ['matches', matches],
-  ] as const) {
-    if (res.error) console.error(`[dashboard] ${name} query failed:`, res.error);
-  }
+    // Confirmed matches the user is part of.
+    const matchesRows = await tx
+      .select({
+        id: matchesTbl.id,
+        status: matchesTbl.status,
+        created_at: matchesTbl.createdAt,
+        trip_id: matchesTbl.tripId,
+        poster_id: matchesTbl.posterId,
+        requester_id: matchesTbl.requesterId,
+        trip_route: tripsTbl.route,
+        trip_travel_date: tripsTbl.travelDate,
+        trip_kind: tripsTbl.kind,
+      })
+      .from(matchesTbl)
+      .innerJoin(tripsTbl, eq(tripsTbl.id, matchesTbl.tripId))
+      .where(or(eq(matchesTbl.posterId, uid), eq(matchesTbl.requesterId, uid)))
+      .orderBy(desc(matchesTbl.createdAt));
+
+    // Incoming pending match_requests on the user's trips, joined with the
+    // requester profile. Run only if myTripRows is non-empty so we don't
+    // issue a where-id-in([]) (which would emit `in ()` and break).
+    const myTripIds = myTripRows.map((t) => t.id);
+    const incoming =
+      myTripIds.length === 0
+        ? []
+        : await tx
+            .select({
+              id: matchRequests.id,
+              status: matchRequests.status,
+              intro_message: matchRequests.introMessage,
+              created_at: matchRequests.createdAt,
+              requester_id: matchRequests.requesterId,
+              trip_id: matchRequests.tripId,
+              req_id: profiles.id,
+              req_display_name: profiles.displayName,
+              req_photo_url: profiles.photoUrl,
+            })
+            .from(matchRequests)
+            .innerJoin(profiles, eq(profiles.id, matchRequests.requesterId))
+            .where(
+              and(inArray(matchRequests.tripId, myTripIds), eq(matchRequests.status, 'pending')),
+            )
+            .orderBy(desc(matchRequests.createdAt));
+
+    return { profileRows, myTripRows, outgoing, matchesRows, incoming };
+  });
+
+  // Shape outgoing into SentRequest[] (re-nest the embedded trip + poster).
+  const outgoingRows: SentRequest[] = data.outgoing.map((r) => ({
+    id: r.id,
+    status: r.status,
+    intro_message: r.intro_message,
+    created_at: r.created_at,
+    trip: {
+      id: r.trip_id,
+      kind: r.trip_kind,
+      route: r.trip_route,
+      travel_date: r.trip_travel_date,
+      user_id: r.trip_user_id,
+      poster: {
+        id: r.poster_id,
+        display_name: r.poster_display_name,
+        photo_url: r.poster_photo_url,
+      },
+    },
+  })) as unknown as SentRequest[];
+
+  const matchRows: DashboardMatch[] = data.matchesRows.map((m) => ({
+    id: m.id,
+    status: m.status,
+    created_at: m.created_at,
+    trip_id: m.trip_id,
+    poster_id: m.poster_id,
+    requester_id: m.requester_id,
+    trip: {
+      route: m.trip_route,
+      travel_date: m.trip_travel_date,
+      kind: m.trip_kind,
+    },
+  })) as unknown as DashboardMatch[];
 
   // Shape raw match_requests into IncomingRequest[] — hydrate `trip` from
   // the already-fetched myTripRows rather than re-embedding.
-  const tripById = new Map(myTripRows.map((t) => [t.id, t]));
-  // PostgREST's inferred TS type for a to-one embed returns an array,
-  // but the runtime value is a single object. Cast through unknown so TS
-  // doesn't complain about the shape mismatch.
-  const incomingRows: IncomingRequest[] = (
-    (incomingRaw.data ?? []) as unknown as Array<{
-      id: string;
-      trip_id: string;
-      intro_message: string | null;
-      requester: {
-        id: string;
-        display_name: string | null;
-        photo_url: string | null;
-      } | null;
-    }>
-  ).flatMap((r) => {
+  const tripById = new Map(data.myTripRows.map((t) => [t.id, t]));
+  const incomingRows: IncomingRequest[] = data.incoming.flatMap((r) => {
     const trip = tripById.get(r.trip_id);
     if (!trip) return [];
     return [
@@ -131,18 +189,17 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           kind: trip.kind,
         },
         requester: {
-          id: r.requester?.id ?? '',
-          display_name: r.requester?.display_name ?? null,
-          photo_url: r.requester?.photo_url ?? null,
+          id: r.req_id,
+          display_name: r.req_display_name,
+          photo_url: r.req_photo_url,
         },
       },
     ];
   });
 
-  console.log(`[dashboard] ${uid} — trips:${myTripRows.length} incoming:${incomingRows.length}`);
-
-  const outgoingRows = (outgoing.data ?? []) as unknown as SentRequest[];
-  const matchRows = (matches.data ?? []) as unknown as DashboardMatch[];
+  console.log(
+    `[dashboard] ${uid} — trips:${data.myTripRows.length} incoming:${incomingRows.length}`,
+  );
 
   // Group incoming requests by trip_id so MyTripCard can render them inline.
   const incomingByTripId = new Map<string, IncomingRequest[]>();
@@ -152,8 +209,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     incomingByTripId.set(r.trip.id, list);
   }
 
-  const firstName = profileRes.data?.display_name?.split(' ')[0] ?? null;
-  const hasAnyData = myTripRows.length > 0 || outgoingRows.length > 0 || matchRows.length > 0;
+  const firstName = data.profileRows[0]?.display_name?.split(' ')[0] ?? null;
+  const hasAnyData = data.myTripRows.length > 0 || outgoingRows.length > 0 || matchRows.length > 0;
 
   return (
     <div className="container max-w-5xl py-10">
@@ -197,7 +254,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <StatItem
             label="Active trips"
             value={
-              myTripRows.filter((t) => t.status !== 'completed' && t.status !== 'cancelled').length
+              data.myTripRows.filter((t) => t.status !== 'completed' && t.status !== 'cancelled')
+                .length
             }
           />
           <StatItem label="Hoping to join" value={incomingRows.length} emphasis />
@@ -209,7 +267,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       {/* ── Tabs — My trips is primary, default, contains incoming inline ── */}
       <Tabs defaultValue="trips" className="mt-8">
         <TabsList>
-          <TabsTrigger value="trips">My trips ({myTripRows.length})</TabsTrigger>
+          <TabsTrigger value="trips">My trips ({data.myTripRows.length})</TabsTrigger>
           <TabsTrigger value="sent">
             <Send className="mr-1 size-4" /> Sent ({outgoingRows.length})
           </TabsTrigger>
@@ -219,10 +277,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </TabsList>
 
         <TabsContent value="trips" className="mt-6 space-y-4">
-          {myTripRows.length === 0 ? (
+          {data.myTripRows.length === 0 ? (
             <FirstTripEmptyState />
           ) : (
-            myTripRows.map((t) => (
+            data.myTripRows.map((t) => (
               <MyTripCard key={t.id} trip={t} incoming={incomingByTripId.get(t.id) ?? []} />
             ))
           )}

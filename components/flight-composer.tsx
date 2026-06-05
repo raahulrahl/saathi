@@ -1,8 +1,7 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { Fragment, useCallback, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
 import { format } from 'date-fns';
 import {
   ArrowRight,
@@ -542,47 +541,27 @@ function LiveCounter({ route, date, flights, enabled }: LiveCounterProps) {
   const [count, setCount] = useState<number | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
 
-  // A lazy, module-level singleton so we don't spin up a client per keystroke.
-  const supabase = useMemo(() => {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !key) return null;
-    return createClient(url, key, { auth: { persistSession: false } });
-  }, []);
-
   const from = route[0]?.toUpperCase() ?? '';
   const to = route[route.length - 1]?.toUpperCase() ?? '';
 
   const runCount = useCallback(async () => {
-    if (!supabase || !enabled || !from || !to || !date) return;
+    if (!enabled || !from || !to || !date) return;
     setStatus('loading');
     try {
-      let q = supabase
-        .from('public_trips')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'open')
-        .contains('route', [from])
-        .contains('route', [to]);
-
-      if (flights.length > 0) {
-        q = q.overlaps('flight_numbers', flights);
-      } else {
-        // Match the server's date window for consistency.
-        const centre = new Date(`${date}T00:00:00Z`).getTime();
-        const ms = 86_400_000;
-        const start = new Date(centre - ms).toISOString().slice(0, 10);
-        const end = new Date(centre + ms).toISOString().slice(0, 10);
-        q = q.gte('travel_date', start).lte('travel_date', end);
-      }
-
-      const { count, error } = await q;
-      if (error) throw error;
-      setCount(count ?? 0);
+      // Server route handles the anon query (Drizzle is server-only).
+      // Same matching semantics: route contains both airports, ±1 day
+      // window unless flight numbers are provided (then overlap match).
+      const qs = new URLSearchParams({ from, to, date, windowDays: '1' });
+      if (flights.length > 0) qs.set('flights', flights.join(','));
+      const res = await fetch(`/api/public-trips/count?${qs.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { total: number };
+      setCount(data.total);
       setStatus('idle');
     } catch {
       setStatus('error');
     }
-  }, [supabase, enabled, from, to, date, flights]);
+  }, [enabled, from, to, date, flights]);
 
   useEffect(() => {
     if (!enabled) {

@@ -7,8 +7,10 @@
 
 import { auth } from '@clerk/nextjs/server';
 import { revalidatePath } from 'next/cache';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { withUser } from '@/lib/db';
+import { matchRequests } from '@/lib/db/schema';
 
 const Input = z.object({
   id: z.string().uuid(),
@@ -36,15 +38,19 @@ const Input = z.object({
 export async function respondToMatchRequestAction(input: z.infer<typeof Input>) {
   const parsed = Input.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Bad input' } as const;
-  const supabase = await createSupabaseServerClient();
   const { userId } = await auth();
   if (!userId) return { ok: false, error: 'Not signed in' } as const;
 
-  const { error } = await supabase
-    .from('match_requests')
-    .update({ status: parsed.data.decision })
-    .eq('id', parsed.data.id);
-  if (error) return { ok: false, error: error.message } as const;
+  try {
+    await withUser(userId, (tx) =>
+      tx
+        .update(matchRequests)
+        .set({ status: parsed.data.decision })
+        .where(eq(matchRequests.id, parsed.data.id)),
+    );
+  } catch (err) {
+    return { ok: false, error: (err as Error).message } as const;
+  }
 
   revalidatePath('/dashboard');
   return { ok: true } as const;

@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getUserId } from '@/lib/auth-guard';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { withUser } from '@/lib/db';
+import { matchRequests } from '@/lib/db/schema';
 import { moderateText } from '@/lib/moderation';
 
 const Input = z.object({
@@ -16,7 +17,6 @@ export async function sendMatchRequestAction(input: z.infer<typeof Input>) {
   if (!parsed.success) {
     return { ok: false, error: 'Please write at least a couple of sentences.' } as const;
   }
-  const supabase = await createSupabaseServerClient();
   const userId = await getUserId();
   if (!userId) return { ok: false, error: 'Please sign in.' } as const;
 
@@ -30,17 +30,23 @@ export async function sendMatchRequestAction(input: z.infer<typeof Input>) {
     return { ok: false, error: 'Please revise your message — it was flagged.' } as const;
   }
 
-  const { error } = await supabase.from('match_requests').insert({
-    trip_id: parsed.data.trip_id,
-    requester_id: userId,
-    intro_message: parsed.data.intro_message,
-  });
-
-  if (error) {
-    if (error.code === '23505') {
+  try {
+    await withUser(userId, (tx) =>
+      tx.insert(matchRequests).values({
+        tripId: parsed.data.trip_id,
+        requesterId: userId,
+        introMessage: parsed.data.intro_message,
+      }),
+    );
+  } catch (err) {
+    // Postgres unique-violation = 23505. postgres.js attaches `code` onto
+    // the error; matchRequests has a UNIQUE (trip_id, requester_id), so a
+    // duplicate is the typical "already sent" case.
+    const code = (err as { code?: string }).code;
+    if (code === '23505') {
       return { ok: false, error: "You've already sent a request for this trip." } as const;
     }
-    return { ok: false, error: error.message } as const;
+    return { ok: false, error: (err as Error).message } as const;
   }
   revalidatePath('/dashboard');
   return { ok: true } as const;

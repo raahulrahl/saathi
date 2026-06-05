@@ -3,27 +3,27 @@
 /**
  * Server action for creating a new trip — used by both
  * /dashboard/new/request and /dashboard/new/offer via the shared
- * PostWizard. Writes through the Clerk-aware Supabase client so RLS
- * enforces owner-only inserts.
+ * PostWizard. Runs as the authenticated user so RLS enforces owner-only
+ * inserts.
  *
  * Data model (post-migrations 0013 + 0014):
- *   - trips table: route, date, airline, languages, etc. — no per-traveller fields.
- *   - trip_travellers table: one row per person being helped on a request trip
- *     (elder, pregnant traveller, first-time flyer with a language barrier, etc.).
+ *   - trips table: route, date, airline, languages, etc.
+ *   - trip_travellers table: one row per person being helped on a request trip.
  *
- * For a request, this action inserts the trip row and then inserts
- * the traveller rows (if any) in a separate INSERT. Both live in the same
- * implicit PostgREST request so they either both land or both fail —
- * but if the second call errors we explicitly delete the trip to
- * avoid a half-written request being visible in /search.
+ * Insertion goes through the create_trip_with_travellers Postgres
+ * function (0022), which wraps both table writes in a single
+ * transaction inside the function body — either both land or neither
+ * does. Replaces the previous two-step insert + naive DELETE rollback
+ * (bug M08).
  */
 
 import { auth } from '@clerk/nextjs/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { after } from 'next/server';
+import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { withUser } from '@/lib/db';
 import { isValidIata } from '@/lib/iata';
 import { LANGUAGES } from '@/lib/languages';
 import { moderateText } from '@/lib/moderation';
@@ -49,18 +49,6 @@ const TripSchema = z
     route: z.array(z.string().regex(/^[A-Z]{3}$/)).min(2),
     travel_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     airline: z.string().max(60).optional().default(''),
-    /**
-     * Flight numbers per leg. Canonicalised at write time: trimmed,
-     * uppercased, interior whitespace + hyphens stripped. That way
-     * "qr540", "QR 540", and "QR-540" all store as "QR540", and the
-     * matcher doesn't need to guess the user's typing conventions at
-     * read time. Empty slots stay in the array to preserve positional
-     * alignment with `route` (leg i has flight_numbers[i]); they're
-     * stripped in the action just before insert.
-     *
-     * The regex accepts 2-char alphanumeric IATA airline codes (so
-     * "6E123", "9W456" are valid) plus 1-4 digit flight numbers.
-     */
     flight_numbers: z
       .preprocess(
         (v) => {
@@ -77,10 +65,6 @@ const TripSchema = z
       )
       .optional()
       .default([]),
-    // Languages the poster can help in (for offers) or wants on the
-    // companion's side (for requests). Must come from the canonical
-    // list in lib/languages.ts — free-text would let "English (US)"
-    // and "English" silently fail to match at the ranking layer (L01).
     languages: z
       .array(
         z.string().refine((v) => LANGUAGES.includes(v), {
@@ -91,35 +75,17 @@ const TripSchema = z
     gender_preference: z.enum(['any', 'male', 'female']).default('any'),
     help_categories: z.array(z.string().min(1)).default([]),
     thank_you_eur: z.number().int().min(0).max(500).optional().nullable(),
-    /**
-     * Free-text notes. Reject obvious phone / email patterns so users
-     * don't paste contact info to bypass the match gate — that
-     * contact info would otherwise leak to authenticated viewers via
-     * the base trips table (see bug M09). Catches honest mistakes;
-     * determined evaders can still spell out numbers in words, but
-     * the friction here plus 0021's anon column-level revoke raises
-     * the cost enough that the match-request flow stays the easier
-     * path.
-     */
     notes: z
       .string()
       .max(2000)
       .refine((v) => !/\+?\d[\d\s\-().]{7,}/.test(v), {
-        message:
-          'Notes can\u2019t include phone numbers \u2014 contact details unlock after a match.',
+        message: 'Notes can’t include phone numbers — contact details unlock after a match.',
       })
       .refine((v) => !/[\w.+-]+@[\w-]+\.[\w.-]+/.test(v), {
-        message:
-          'Notes can\u2019t include email addresses \u2014 contact details unlock after a match.',
+        message: 'Notes can’t include email addresses — contact details unlock after a match.',
       })
       .optional()
       .default(''),
-    /**
-     * Array of travellers being helped. Only applies to kind='request';
-     * the server strips this for offers. Minimum zero, maximum four (we
-     * don't expect a family group of five+ on one flight in practice —
-     * raise the cap when a real user hits it).
-     */
     travellers: z.array(TravellerSchema).max(4).optional().default([]),
   })
   .superRefine((v, ctx) => {
@@ -147,7 +113,6 @@ export async function createTripAction(input: TripInput) {
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid trip.' } as const;
   }
-  const supabase = await createSupabaseServerClient();
   const { userId } = await auth();
   if (!userId) {
     return { ok: false, error: 'Please sign in.' } as const;
@@ -159,11 +124,8 @@ export async function createTripAction(input: TripInput) {
     if (mod.flagged) return { ok: false, error: 'Please revise your notes.' } as const;
   }
 
-  // Single-transaction insert: the rpc wraps the trips insert and the
-  // trip_travellers inserts in one Postgres function, so either both
-  // tables have their rows or neither does. Replaces the previous
-  // two-step insert + naive DELETE rollback (bug M08), which could
-  // leak ghost trip rows if the DELETE itself failed.
+  // Cast arrays to ::text[] in the SQL so postgres.js binds them as
+  // text[] rather than as a json-shaped value. travellers is a jsonb.
   const travellersForRpc =
     p.kind === 'request'
       ? p.travellers.map((t) => ({
@@ -173,22 +135,36 @@ export async function createTripAction(input: TripInput) {
         }))
       : [];
 
-  const { data: newTripId, error } = await supabase.rpc('create_trip_with_travellers', {
-    p_kind: p.kind,
-    p_route: p.route,
-    p_travel_date: p.travel_date,
-    p_airline: p.airline || null,
-    p_flight_numbers: p.flight_numbers.filter(Boolean),
-    p_languages: p.languages,
-    p_gender_preference: p.gender_preference,
-    p_help_categories: p.help_categories,
-    p_thank_you_eur: p.kind === 'request' ? (p.thank_you_eur ?? null) : null,
-    p_notes: p.notes || null,
-    p_travellers: travellersForRpc,
-  });
+  const flightNumbersFiltered = p.flight_numbers.filter(Boolean);
+  const thankYou = p.kind === 'request' ? (p.thank_you_eur ?? null) : null;
+  const notes = p.notes || null;
+  const airline = p.airline || null;
 
-  if (error || !newTripId) {
-    return { ok: false, error: error?.message ?? 'Could not create trip.' } as const;
+  let newTripId: string;
+  try {
+    newTripId = await withUser(userId, async (tx) => {
+      const rows = await tx.execute<{ id: string }>(
+        sql`select public.create_trip_with_travellers(
+          ${p.kind}::text,
+          ${p.route}::text[],
+          ${p.travel_date}::date,
+          ${airline}::text,
+          ${flightNumbersFiltered}::text[],
+          ${p.languages}::text[],
+          ${p.gender_preference}::text,
+          ${p.help_categories}::text[],
+          ${thankYou}::integer,
+          ${notes}::text,
+          ${JSON.stringify(travellersForRpc)}::jsonb
+        ) as id`,
+      );
+      const arr = rows as unknown as Array<{ id: string }>;
+      const id = arr[0]?.id;
+      if (!id) throw new Error('create_trip_with_travellers returned no id');
+      return id;
+    });
+  } catch (err) {
+    return { ok: false, error: (err as Error).message } as const;
   }
 
   // Enqueue notifications synchronously — this just writes rows to the
@@ -205,7 +181,7 @@ export async function createTripAction(input: TripInput) {
       kind: p.kind,
       route: p.route,
       travel_date: p.travel_date,
-      flight_numbers: p.flight_numbers.filter(Boolean),
+      flight_numbers: flightNumbersFiltered,
       languages: p.languages,
     });
   } catch (err) {

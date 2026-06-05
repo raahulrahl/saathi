@@ -25,12 +25,10 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { createClient } from '@supabase/supabase-js';
 import { format } from 'date-fns';
 import { ArrowRight, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { dateWindow } from '@/lib/dates';
 import { isValidIata, searchAirports } from '@/lib/iata';
 import { cn } from '@/lib/utils';
 
@@ -63,13 +61,6 @@ export function PeekWidget({ className }: { className?: string }) {
   const [date, setDate] = useState(defaultPeekDate());
   const [result, setResult] = useState<Result>({ state: 'idle' });
 
-  const supabase = useMemo(() => {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !key) return null;
-    return createClient(url, key, { auth: { persistSession: false } });
-  }, []);
-
   const canSubmit =
     isValidIata(from.toUpperCase()) &&
     isValidIata(to.toUpperCase()) &&
@@ -77,45 +68,24 @@ export function PeekWidget({ className }: { className?: string }) {
     !!date;
 
   const peek = useCallback(async () => {
-    if (!supabase || !canSubmit) return;
+    if (!canSubmit) return;
     setResult({ state: 'loading' });
     const f = from.toUpperCase();
     const t = to.toUpperCase();
     try {
       // ±3 day window — same shape as the server-side matching, so the peek
-      // is a faithful preview of what a search would return. Uses the
-      // shared dateWindow() helper from lib/dates to keep this logic in
-      // one place.
-      const { start, end } = dateWindow(date, 3);
-
-      const base = supabase
-        .from('public_trips')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'open')
-        .contains('route', [f])
-        .contains('route', [t])
-        .gte('travel_date', start)
-        .lte('travel_date', end);
-
-      const [offers, requests] = await Promise.all([
-        base.eq('kind', 'offer'),
-        supabase
-          .from('public_trips')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'open')
-          .eq('kind', 'request')
-          .contains('route', [f])
-          .contains('route', [t])
-          .gte('travel_date', start)
-          .lte('travel_date', end),
-      ]);
-
-      if (offers.error || requests.error) throw offers.error ?? requests.error;
+      // is a faithful preview of what a search would return. The query runs
+      // server-side via /api/public-trips/count (anon role, security_invoker
+      // views) — identical RLS surface to the previous browser query.
+      const qs = new URLSearchParams({ from: f, to: t, date, windowDays: '3' });
+      const res = await fetch(`/api/public-trips/count?${qs.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { offers: number; requests: number };
 
       setResult({
         state: 'done',
-        offers: offers.count ?? 0,
-        requests: requests.count ?? 0,
+        offers: data.offers,
+        requests: data.requests,
         from: f,
         to: t,
         date,
@@ -123,7 +93,7 @@ export function PeekWidget({ className }: { className?: string }) {
     } catch {
       setResult({ state: 'error' });
     }
-  }, [supabase, canSubmit, from, to, date]);
+  }, [canSubmit, from, to, date]);
 
   const searchHref = useMemo(() => {
     if (result.state !== 'done') return '/search';

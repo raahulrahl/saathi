@@ -3,13 +3,20 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { Facebook, Instagram, Linkedin, Twitter } from 'lucide-react';
+import { and, desc, eq } from 'drizzle-orm';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { LanguageChipRow } from '@/components/language-chip';
 import { TripCard, type TripCardData } from '@/components/trip-card';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { withUser } from '@/lib/db';
+import {
+  profileReviewStats,
+  publicProfiles,
+  publicTrips,
+  reviews as reviewsTbl,
+} from '@/lib/db/schema';
 
 interface ProfilePageProps {
   params: Promise<{ id: string }>;
@@ -17,12 +24,14 @@ interface ProfilePageProps {
 
 export async function generateMetadata({ params }: ProfilePageProps): Promise<Metadata> {
   const { id } = await params;
-  const supabase = await createSupabaseServerClient();
-  const { data } = await supabase
-    .from('public_profiles')
-    .select('display_name, role')
-    .eq('id', id)
-    .maybeSingle();
+  const data = await withUser(null, async (tx) => {
+    const rows = await tx
+      .select({ display_name: publicProfiles.displayName, role: publicProfiles.role })
+      .from(publicProfiles)
+      .where(eq(publicProfiles.id, id))
+      .limit(1);
+    return rows[0] ?? null;
+  });
   if (!data) return { title: 'Profile not found' };
   return {
     title: `${data.display_name ?? 'Member'} · ${data.role}`,
@@ -31,31 +40,52 @@ export async function generateMetadata({ params }: ProfilePageProps): Promise<Me
 
 export default async function ProfilePage({ params }: ProfilePageProps) {
   const { id } = await params;
-  const supabase = await createSupabaseServerClient();
 
-  const [{ data: profile }, { data: stats }, { data: trips }, { data: reviews }] =
-    await Promise.all([
-      supabase.from('public_profiles').select('*').eq('id', id).maybeSingle(),
-      supabase.from('profile_review_stats').select('*').eq('user_id', id).maybeSingle(),
-      supabase.from('public_trips').select('*').eq('user_id', id).eq('status', 'open'),
-      supabase
-        .from('reviews')
-        .select('rating, body, created_at')
-        .eq('reviewee_id', id)
-        .order('created_at', { ascending: false })
-        .limit(20),
-    ]);
+  // Anon-readable through the security_invoker views.
+  const data = await withUser(null, async (tx) => {
+    const profileRows = await tx
+      .select()
+      .from(publicProfiles)
+      .where(eq(publicProfiles.id, id))
+      .limit(1);
+    const statsRows = await tx
+      .select()
+      .from(profileReviewStats)
+      .where(eq(profileReviewStats.userId, id))
+      .limit(1);
+    const trips = await tx
+      .select()
+      .from(publicTrips)
+      .where(and(eq(publicTrips.userId, id), eq(publicTrips.status, 'open')));
+    const reviews = await tx
+      .select({
+        rating: reviewsTbl.rating,
+        body: reviewsTbl.body,
+        created_at: reviewsTbl.createdAt,
+      })
+      .from(reviewsTbl)
+      .where(eq(reviewsTbl.revieweeId, id))
+      .orderBy(desc(reviewsTbl.createdAt))
+      .limit(20);
+    return {
+      profile: profileRows[0] ?? null,
+      stats: statsRows[0] ?? null,
+      trips,
+      reviews,
+    };
+  });
 
+  const { profile, stats, trips, reviews } = data;
   if (!profile) notFound();
 
   return (
     <div className="container max-w-4xl py-10">
       <header className="flex flex-col items-start gap-6 sm:flex-row">
         <Avatar className="size-24">
-          {profile.photo_url ? (
+          {profile.photoUrl ? (
             <AvatarImage asChild>
               <Image
-                src={profile.photo_url}
+                src={profile.photoUrl}
                 alt=""
                 width={96}
                 height={96}
@@ -64,39 +94,39 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
               />
             </AvatarImage>
           ) : null}
-          <AvatarFallback>{(profile.display_name ?? '??').slice(0, 2)}</AvatarFallback>
+          <AvatarFallback>{(profile.displayName ?? '??').slice(0, 2)}</AvatarFallback>
         </Avatar>
         <div className="flex-1 space-y-3">
           <div>
-            <h1 className="font-serif text-3xl">{profile.display_name ?? 'Anonymous'}</h1>
+            <h1 className="font-serif text-3xl">{profile.displayName ?? 'Anonymous'}</h1>
             <p className="text-sm capitalize text-muted-foreground">
               {profile.role === 'family' ? 'Family member' : 'Companion'}
             </p>
           </div>
           {profile.bio ? <p className="text-sm leading-relaxed">{profile.bio}</p> : null}
-          <LanguageChipRow languages={profile.languages} primary={profile.primary_language} />
-          {/* Self-reported social profile links. Not OAuth-verified — the
-              onboarding form just takes URLs. Rendered as small icon
-              buttons; inert if missing. */}
-          {(profile.linkedin_url ||
-            profile.facebook_url ||
-            profile.twitter_url ||
-            profile.instagram_url) && (
+          <LanguageChipRow
+            languages={profile.languages ?? []}
+            primary={profile.primaryLanguage ?? null}
+          />
+          {(profile.linkedinUrl ||
+            profile.facebookUrl ||
+            profile.twitterUrl ||
+            profile.instagramUrl) && (
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <span className="text-xs uppercase tracking-wider text-warm-silver">
                 Find them on
               </span>
-              {profile.linkedin_url ? (
-                <SocialLink href={profile.linkedin_url} label="LinkedIn" icon={Linkedin} />
+              {profile.linkedinUrl ? (
+                <SocialLink href={profile.linkedinUrl} label="LinkedIn" icon={Linkedin} />
               ) : null}
-              {profile.facebook_url ? (
-                <SocialLink href={profile.facebook_url} label="Facebook" icon={Facebook} />
+              {profile.facebookUrl ? (
+                <SocialLink href={profile.facebookUrl} label="Facebook" icon={Facebook} />
               ) : null}
-              {profile.twitter_url ? (
-                <SocialLink href={profile.twitter_url} label="X / Twitter" icon={Twitter} />
+              {profile.twitterUrl ? (
+                <SocialLink href={profile.twitterUrl} label="X / Twitter" icon={Twitter} />
               ) : null}
-              {profile.instagram_url ? (
-                <SocialLink href={profile.instagram_url} label="Instagram" icon={Instagram} />
+              {profile.instagramUrl ? (
+                <SocialLink href={profile.instagramUrl} label="Instagram" icon={Instagram} />
               ) : null}
             </div>
           )}
@@ -109,21 +139,21 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
         <div>
           <h2 className="font-serif text-xl">Open trips</h2>
           <div className="mt-4 space-y-4">
-            {trips && trips.length > 0 ? (
+            {trips.length > 0 ? (
               trips.map((t) => {
                 const card: TripCardData = {
-                  id: t.id,
-                  kind: t.kind,
-                  display_name: profile.display_name,
-                  photo_url: profile.photo_url,
-                  languages: t.languages,
-                  primary_language: profile.primary_language,
-                  route: t.route,
-                  travel_date: t.travel_date,
-                  traveller_age_bands: t.traveller_age_bands ?? [],
-                  traveller_count: t.traveller_count ?? 0,
-                  help_categories: t.help_categories,
-                  thank_you_eur: t.thank_you_eur,
+                  id: t.id!,
+                  kind: t.kind!,
+                  display_name: profile.displayName,
+                  photo_url: profile.photoUrl,
+                  languages: t.languages ?? [],
+                  primary_language: profile.primaryLanguage ?? null,
+                  route: t.route ?? [],
+                  travel_date: t.travelDate!,
+                  traveller_age_bands: t.travellerAgeBands ?? [],
+                  traveller_count: t.travellerCount ?? 0,
+                  help_categories: t.helpCategories ?? [],
+                  thank_you_eur: t.thankYouEur,
                   airline: t.airline,
                 };
                 return <TripCard key={t.id} data={card} />;
@@ -140,18 +170,18 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
 
         <aside>
           <h2 className="font-serif text-xl">Reviews</h2>
-          {stats?.review_count ? (
+          {stats?.reviewCount ? (
             <div className="mt-3 flex items-baseline gap-2">
-              <div className="font-serif text-3xl">{stats.average_rating}</div>
+              <div className="font-serif text-3xl">{stats.averageRating}</div>
               <div className="text-sm text-muted-foreground">
-                across {stats.review_count} completed trip{stats.review_count === 1 ? '' : 's'}
+                across {stats.reviewCount} completed trip{stats.reviewCount === 1 ? '' : 's'}
               </div>
             </div>
           ) : (
             <p className="mt-3 text-sm text-muted-foreground">No completed trips yet.</p>
           )}
           <ul className="mt-4 space-y-3">
-            {(reviews ?? []).map((r, idx) => (
+            {reviews.map((r, idx) => (
               <li key={idx} className="rounded-md border p-3 text-sm">
                 <div className="flex items-center gap-2">
                   <Badge variant="success">★ {r.rating}</Badge>

@@ -2,13 +2,21 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { format, parseISO } from 'date-fns';
+import { and, asc, eq } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { LanguageChipRow } from '@/components/language-chip';
 import { RouteLine } from '@/components/route-line';
 import { requireUserId } from '@/lib/auth-guard';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { withUser } from '@/lib/db';
+import {
+  matches as matchesTbl,
+  profileLanguages,
+  profiles,
+  tripTravellers,
+  trips as tripsTbl,
+} from '@/lib/db/schema';
 
 export const metadata: Metadata = { title: 'Match' };
 
@@ -23,87 +31,115 @@ export const metadata: Metadata = { title: 'Match' };
  * Default: off. Flip to on for staging / once chat + reviews are built.
  */
 const MATCH_FEATURES_ENABLED = process.env.NEXT_PUBLIC_MATCH_FEATURES_ENABLED === 'true';
+
 export default async function MatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createSupabaseServerClient();
   const userId = await requireUserId(`/match/${id}`);
 
-  const { data: match } = await supabase
-    .from('matches')
-    .select(
-      `id, status, created_at, poster_marked_complete, requester_marked_complete,
-       trip:trips!inner(*),
-       poster:profiles!matches_poster_id_fkey(id, display_name, photo_url, whatsapp_number, email, linkedin_url, twitter_url, instagram_url, facebook_url),
-       requester:profiles!matches_requester_id_fkey(id, display_name, photo_url, whatsapp_number, email, linkedin_url, twitter_url, instagram_url, facebook_url)`,
-    )
-    .eq('id', id)
-    .maybeSingle();
+  const data = await withUser(userId, async (tx) => {
+    // Match + trip + poster + requester. The poster/requester profiles
+    // here include private contact fields (whatsapp_number, email, social
+    // urls) — RLS lets us through because we're a match participant.
+    const matchJoined = await tx
+      .select({
+        id: matchesTbl.id,
+        status: matchesTbl.status,
+        created_at: matchesTbl.createdAt,
+        poster_marked_complete: matchesTbl.posterMarkedComplete,
+        requester_marked_complete: matchesTbl.requesterMarkedComplete,
+        trip_id: tripsTbl.id,
+        trip_route: tripsTbl.route,
+        trip_travel_date: tripsTbl.travelDate,
+        trip_airline: tripsTbl.airline,
+        trip_languages: tripsTbl.languages,
+        trip_notes: tripsTbl.notes,
+        poster_id: matchesTbl.posterId,
+        requester_id: matchesTbl.requesterId,
+      })
+      .from(matchesTbl)
+      .innerJoin(tripsTbl, eq(tripsTbl.id, matchesTbl.tripId))
+      .where(eq(matchesTbl.id, id))
+      .limit(1);
 
-  if (!match) notFound();
+    const m = matchJoined[0] ?? null;
+    if (!m) return { match: null };
 
-  const m = match as unknown as {
-    id: string;
-    status: string;
-    poster_marked_complete: boolean;
-    requester_marked_complete: boolean;
-    trip: {
-      id: string;
-      route: string[];
-      travel_date: string;
-      airline: string | null;
-      languages: string[];
-      notes: string | null;
+    // Fetch both profiles in one IN-lookup; shape them on the JS side.
+    const profileRows = await tx
+      .select({
+        id: profiles.id,
+        display_name: profiles.displayName,
+        photo_url: profiles.photoUrl,
+        whatsapp_number: profiles.whatsappNumber,
+        email: profiles.email,
+        linkedin_url: profiles.linkedinUrl,
+        twitter_url: profiles.twitterUrl,
+        instagram_url: profiles.instagramUrl,
+        facebook_url: profiles.facebookUrl,
+      })
+      .from(profiles)
+      .where(eq(profiles.id, m.poster_id))
+      .limit(1);
+    const requesterRows = await tx
+      .select({
+        id: profiles.id,
+        display_name: profiles.displayName,
+        photo_url: profiles.photoUrl,
+        whatsapp_number: profiles.whatsappNumber,
+        email: profiles.email,
+        linkedin_url: profiles.linkedinUrl,
+        twitter_url: profiles.twitterUrl,
+        instagram_url: profiles.instagramUrl,
+        facebook_url: profiles.facebookUrl,
+      })
+      .from(profiles)
+      .where(eq(profiles.id, m.requester_id))
+      .limit(1);
+
+    const poster = profileRows[0] ?? null;
+    const requester = requesterRows[0] ?? null;
+
+    // Travellers (visible to trip owner via 0013 "owner full access" policy
+    // and to match participants via 0015 "match participants read").
+    const travellers = await tx
+      .select({
+        id: tripTravellers.id,
+        first_name: tripTravellers.firstName,
+        age_band: tripTravellers.ageBand,
+        medical_notes: tripTravellers.medicalNotes,
+        sort_order: tripTravellers.sortOrder,
+      })
+      .from(tripTravellers)
+      .where(eq(tripTravellers.tripId, m.trip_id))
+      .orderBy(asc(tripTravellers.sortOrder));
+
+    // The "other" person's primary language for the language chip row.
+    const otherId = userId === m.poster_id ? m.requester_id : m.poster_id;
+    const langRows = await tx
+      .select({ language: profileLanguages.language })
+      .from(profileLanguages)
+      .where(and(eq(profileLanguages.profileId, otherId), eq(profileLanguages.isPrimary, true)))
+      .limit(1);
+
+    return {
+      match: m,
+      poster,
+      requester,
+      travellers,
+      otherPrimaryLanguage: langRows[0]?.language ?? null,
     };
-    poster: {
-      id: string;
-      display_name: string | null;
-      photo_url: string | null;
-      whatsapp_number: string | null;
-      email: string | null;
-      linkedin_url: string | null;
-      twitter_url: string | null;
-      instagram_url: string | null;
-      facebook_url: string | null;
-    };
-    requester: {
-      id: string;
-      display_name: string | null;
-      photo_url: string | null;
-      whatsapp_number: string | null;
-      email: string | null;
-      linkedin_url: string | null;
-      twitter_url: string | null;
-      instagram_url: string | null;
-      facebook_url: string | null;
-    };
-  };
+  });
 
-  const youArePoster = userId === m.poster.id;
-  const other = youArePoster ? m.requester : m.poster;
+  if (!data.match || !data.poster || !data.requester) notFound();
 
-  // Fetch travellers for this trip. Visible to the trip owner (via the
-  // "owner full access" policy from 0013) and to any authenticated user
-  // on an active/completed `matches` row for the trip (via the
-  // "match participants read" policy from 0015). Random authenticated
-  // users and anon see nothing.
-  const { data: travellers } = await supabase
-    .from('trip_travellers')
-    .select('id, first_name, age_band, medical_notes, sort_order')
-    .eq('trip_id', m.trip.id)
-    .order('sort_order', { ascending: true });
-  const travellerList = travellers ?? [];
+  const m = data.match;
+  const poster = data.poster;
+  const requester = data.requester;
+  const travellerList = data.travellers;
+  const otherPrimaryLanguage = data.otherPrimaryLanguage;
 
-  // Fetch the other person's primary language separately — profile_languages
-  // is normalised post-0011 and PostgREST embeds from `profiles` would need
-  // a composite join we don't have. One extra round trip; trivial at this
-  // scale and keeps the code obvious.
-  const { data: otherPrimaryLang } = await supabase
-    .from('profile_languages')
-    .select('language')
-    .eq('profile_id', other.id)
-    .eq('is_primary', true)
-    .maybeSingle();
-  const otherPrimaryLanguage = otherPrimaryLang?.language ?? null;
+  const youArePoster = userId === poster.id;
+  const other = youArePoster ? requester : poster;
 
   return (
     <div className="container max-w-4xl py-10">
@@ -115,7 +151,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
         You're matched with {other.display_name ?? 'your Saathi'}
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Matched on {format(parseISO(m.trip.travel_date), 'EEE, d LLL yyyy')} ·{' '}
+        Matched on {format(parseISO(m.trip_travel_date), 'EEE, d LLL yyyy')} ·{' '}
         <Link href={`/profile/${other.id}`} className="underline">
           view profile
         </Link>
@@ -125,15 +161,15 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
         <div className="space-y-6">
           <Card>
             <CardContent className="space-y-4 p-5">
-              <RouteLine route={m.trip.route} />
+              <RouteLine route={m.trip_route} />
               <Separator />
               <div className="grid gap-2 text-sm">
-                {m.trip.airline ? <div>Airline: {m.trip.airline}</div> : null}
-                <div>Date: {format(parseISO(m.trip.travel_date), 'EEEE, d LLLL yyyy')}</div>
+                {m.trip_airline ? <div>Airline: {m.trip_airline}</div> : null}
+                <div>Date: {format(parseISO(m.trip_travel_date), 'EEEE, d LLLL yyyy')}</div>
                 <div className="mt-2">
-                  <LanguageChipRow languages={m.trip.languages} primary={otherPrimaryLanguage} />
+                  <LanguageChipRow languages={m.trip_languages} primary={otherPrimaryLanguage} />
                 </div>
-                {m.trip.notes ? <p className="text-muted-foreground">{m.trip.notes}</p> : null}
+                {m.trip_notes ? <p className="text-muted-foreground">{m.trip_notes}</p> : null}
               </div>
             </CardContent>
           </Card>
@@ -169,8 +205,6 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
           ) : null}
 
           {MATCH_FEATURES_ENABLED ? (
-            // STUB: real chat UI ships here once MATCH_FEATURES_ENABLED lands.
-            // Keeping an empty-ish card under the flag for when that work begins.
             <Card>
               <CardContent className="space-y-2 p-5">
                 <h2 className="font-serif text-lg">Chat</h2>
@@ -286,7 +320,6 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
           </Card>
 
           {MATCH_FEATURES_ENABLED ? (
-            // STUB: completion flip + review UI ships here.
             <Card>
               <CardContent className="space-y-3 p-5">
                 <h2 className="font-serif text-lg">After the trip</h2>
