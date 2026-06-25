@@ -8,11 +8,11 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
       ref={ref}
       className={cn(
         // Clay inputs — warm oat border, generous height, black text.
-        'flex h-11 w-full rounded-lg border border-oat bg-white px-3 py-2 text-sm text-foreground ring-offset-background',
+        'flex h-12 w-full rounded-lg border border-oat bg-white px-3.5 py-2 text-base text-foreground ring-offset-background',
         'placeholder:text-warm-silver',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
         'disabled:cursor-not-allowed disabled:opacity-50',
-        'file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground',
+        'file:border-0 file:bg-transparent file:text-base file:font-medium file:text-foreground',
         className,
       )}
       {...props}

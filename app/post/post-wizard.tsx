@@ -210,8 +210,8 @@ export function PostWizard({
       {/* ─── 1. Compact journey row ─────────────────────────────────────── */}
       <section className="space-y-2">
         <div>
-          <h2 className="font-serif text-lg">Your flight path</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <h2 className="font-serif text-xl">Your flight path</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
             Tap the{' '}
             <span className="inline-flex size-4 items-center justify-center rounded-full border border-oat bg-background align-middle">
               <Plus className="size-2.5" />
@@ -230,18 +230,18 @@ export function PostWizard({
               <Fragment key={i}>
                 {/* Airport chip: role tag → IATA input → city name */}
                 <div className="relative flex flex-col items-center gap-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                     {role}
                   </span>
                   <Input
                     value={code}
                     onChange={(e) => setRouteAt(i, e.target.value)}
-                    className="h-11 w-20 rounded-lg border-oat-dark bg-background text-center font-mono text-lg font-bold uppercase tracking-wider focus-visible:ring-matcha-600"
+                    className="h-12 w-24 rounded-lg border-oat-dark bg-background text-center font-mono text-lg font-bold uppercase tracking-wider focus-visible:ring-matcha-600"
                     maxLength={3}
                     placeholder="—"
                     required
                   />
-                  <span className="min-h-[1rem] max-w-[6rem] truncate text-[11px] text-muted-foreground">
+                  <span className="min-h-[1rem] max-w-[6rem] truncate text-xs text-muted-foreground">
                     {city ?? '\u00A0'}
                   </span>
                   {isLayover && (
@@ -281,8 +281,8 @@ export function PostWizard({
       {/* ─── 2. Flight numbers — compact list ───────────────────────────── */}
       <section className="space-y-2">
         <div>
-          <h2 className="font-serif text-lg">Flight numbers</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <h2 className="font-serif text-xl">Flight numbers</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
             Type a flight number and we&rsquo;ll auto-fill the airports + airline.
           </p>
         </div>
@@ -293,7 +293,7 @@ export function PostWizard({
             const status = lookupStatus[i] ?? 'idle';
             return (
               <div key={i} className="flex flex-wrap items-center gap-3">
-                <span className="w-28 shrink-0 font-mono text-xs text-muted-foreground">
+                <span className="w-28 shrink-0 font-mono text-sm text-muted-foreground">
                   Leg {i + 1}
                   {from && to ? ` · ${from} → ${to}` : ''}
                 </span>
@@ -319,7 +319,7 @@ export function PostWizard({
                     }}
                     placeholder={i === 0 ? 'QR540' : 'QR23'}
                     maxLength={10}
-                    className="h-9 w-36 pr-8 font-mono uppercase tracking-wide"
+                    className="h-11 w-40 pr-9 font-mono uppercase tracking-wide"
                     autoComplete="off"
                   />
                   <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
@@ -348,8 +348,8 @@ export function PostWizard({
       {/* ─── 3. Date + Airline ──────────────────────────────────────────── */}
       <section className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
-          <Label htmlFor="travel_date" className="text-xs">
-            Travel date
+          <Label htmlFor="travel_date" className="text-[15px]">
+            Travel date <span className="ml-0.5 text-pomegranate-600">*</span>
           </Label>
           <Input
             id="travel_date"
@@ -363,7 +363,7 @@ export function PostWizard({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="airline" className="text-xs">
+          <Label htmlFor="airline" className="text-[15px]">
             Airline <span className="text-muted-foreground">(optional)</span>
           </Label>
           <Input
@@ -381,10 +381,10 @@ export function PostWizard({
       {/* ─── 4. Languages ───────────────────────────────────────────────── */}
       <section className="space-y-2">
         <div>
-          <h2 className="font-serif text-lg">
+          <h2 className="font-serif text-xl">
             {isRequest ? 'Languages they speak' : 'Languages you speak'}
           </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             We rank matches by language first. Be honest — only ones you can hold a conversation in.
           </p>
         </div>
@@ -400,8 +400,8 @@ export function PostWizard({
       <section className="space-y-2">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <h2 className="font-serif text-lg">What could you help with?</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <h2 className="font-serif text-xl">What could you help with?</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
               Tap any that apply. Hover for a hint.
             </p>
           </div>
@@ -439,10 +439,10 @@ export function PostWizard({
       {isRequest ? (
         <section className="space-y-3">
           <div>
-            <h2 className="font-serif text-lg">
+            <h2 className="font-serif text-xl">
               {state.travellers.length > 1 ? 'About your travellers' : 'About your traveller'}
             </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <p className="mt-1 text-sm text-muted-foreground">
               This could be a parent, spouse, sibling, pregnant traveller, or first-time flyer —
               whoever you&rsquo;re sending. Only age bands are public. Names and notes stay private
               until the request is accepted. Add more if they&rsquo;re travelling together.
@@ -456,7 +456,7 @@ export function PostWizard({
                 className="relative space-y-3 rounded-2xl border border-oat bg-cream/40 p-4"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                     Traveller {i + 1}
                   </span>
                   {state.travellers.length > 1 && (
@@ -477,7 +477,7 @@ export function PostWizard({
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
-                    <Label htmlFor={`traveller-name-${i}`} className="text-xs">
+                    <Label htmlFor={`traveller-name-${i}`} className="text-[15px]">
                       First name
                     </Label>
                     <Input
@@ -495,7 +495,7 @@ export function PostWizard({
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor={`traveller-age-${i}`} className="text-xs">
+                    <Label htmlFor={`traveller-age-${i}`} className="text-[15px]">
                       Age band
                     </Label>
                     <select
@@ -510,7 +510,7 @@ export function PostWizard({
                           return { ...prev, travellers: next };
                         });
                       }}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      className="flex h-12 w-full rounded-lg border border-oat bg-white px-3.5 py-2 text-base text-foreground"
                     >
                       <option value="">Pick a band</option>
                       <option value="60-70">60–70</option>
@@ -520,7 +520,7 @@ export function PostWizard({
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor={`traveller-notes-${i}`} className="text-xs">
+                  <Label htmlFor={`traveller-notes-${i}`} className="text-[15px]">
                     Notes (private)
                   </Label>
                   <Textarea
@@ -568,14 +568,14 @@ export function PostWizard({
       {/* ─── 7. Notes ───────────────────────────────────────────────────── */}
       <section className="space-y-2">
         <div>
-          <h2 className="font-serif text-lg">Anything else?</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <h2 className="font-serif text-xl">Anything else?</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
             A short note about how you like to help.
           </p>
         </div>
         {isRequest ? (
           <div className="space-y-1">
-            <Label htmlFor="thank_you_eur" className="text-xs">
+            <Label htmlFor="thank_you_eur" className="text-[15px]">
               Thank-you amount (EUR)
             </Label>
             <Input
@@ -593,7 +593,7 @@ export function PostWizard({
               }}
               placeholder="15"
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Saathi never touches money. Settled directly between you.
             </p>
           </div>
@@ -616,7 +616,7 @@ export function PostWizard({
 
       {/* ─── Submit ─────────────────────────────────────────────────────── */}
       <div className="flex flex-col-reverse items-stretch gap-3 border-t border-oat pt-5 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {isRequest
             ? 'Posting makes your request visible to travellers on the same route.'
             : 'Posting makes your offer visible to families.'}

@@ -27,7 +27,7 @@ const FlightGlobe = dynamic(() => import('@/components/flight-globe').then((m) =
   ssr: false,
   loading: () => (
     <div className="flex aspect-square items-center justify-center">
-      <span className="text-xs text-muted-foreground">Loading globe…</span>
+      <span className="text-sm text-muted-foreground">Loading globe…</span>
     </div>
   ),
 });
@@ -75,12 +75,15 @@ export function TripPostClient({ kind, profileLanguages, defaults }: TripPostCli
       <aside className="hidden lg:block">
         <div className="sticky top-24 space-y-3">
           <div className="overflow-hidden rounded-3xl border border-oat bg-gradient-to-b from-cream to-oat-light/30 p-3 shadow-clay">
-            <FlightGlobe route={route} className="mx-auto w-full max-w-[280px]" />
+            <FlightGlobe route={route} className="mx-auto w-full max-w-[300px]" />
+            <p className="mt-1 text-center text-xs text-warm-charcoal">
+              {hasRoute ? '↔ Drag to rotate your route' : 'Your route appears here as you type'}
+            </p>
           </div>
 
           {hasRoute && (
             <div className="rounded-2xl border border-oat bg-card px-4 py-3">
-              <div className="flex items-center justify-center gap-1.5 font-mono text-sm font-semibold">
+              <div className="flex items-center justify-center gap-1.5 font-mono text-base font-semibold">
                 {route.map((code, i) => (
                   <span key={`${code}-${i}`} className="flex items-center gap-1.5">
                     {i > 0 && <span className="text-muted-foreground">→</span>}
@@ -88,7 +91,7 @@ export function TripPostClient({ kind, profileLanguages, defaults }: TripPostCli
                   </span>
                 ))}
               </div>
-              <ol className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+              <ol className="mt-2 space-y-1 text-xs text-muted-foreground">
                 {route.map((code, i) => (
                   <li key={`${code}-${i}`} className="flex items-center gap-2">
                     <span className="inline-flex size-3.5 items-center justify-center rounded-full bg-matcha-300/40 font-mono text-[9px] text-matcha-800">
@@ -110,8 +113,10 @@ export function TripPostClient({ kind, profileLanguages, defaults }: TripPostCli
       {hasRoute && (
         <div className="space-y-3 lg:hidden">
           <div className="rounded-3xl border border-oat bg-gradient-to-b from-cream to-oat-light/30 p-3">
-            <FlightGlobe route={route} className="mx-auto w-full max-w-[240px]" />
-            <p className="mt-2 text-center font-mono text-sm font-semibold">{route.join(' → ')}</p>
+            <FlightGlobe route={route} className="mx-auto w-full max-w-[260px]" />
+            <p className="mt-2 text-center font-mono text-base font-semibold">
+              {route.join(' → ')}
+            </p>
           </div>
           <FlightTimeline details={flightDetails} legCount={legCount} />
         </div>

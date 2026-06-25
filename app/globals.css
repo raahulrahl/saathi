@@ -35,7 +35,7 @@
     --secondary-foreground: 0 0% 0%;
 
     --muted: 40 20% 94%;
-    --muted-foreground: 38 4% 60%; /* #9f9b93 warm silver */
+    --muted-foreground: 33 9% 40%; /* warm gray, darkened — ~5:1 on cream, AA-safe */
 
     --accent: 35 28% 90%;
     --accent-foreground: 0 0% 0%;
@@ -172,9 +172,9 @@
     border-color: #dad4c8;
   }
 
-  /* Uppercase wayfinding label. Tight, high-tracking, 12px — always in
+  /* Uppercase wayfinding label. Tight, high-tracking, 13px — always in
      combination with the heading. */
   .clay-label {
-    @apply text-xs font-semibold uppercase tracking-[0.09em] text-warm-charcoal;
+    @apply text-[13px] font-semibold uppercase tracking-[0.09em] text-warm-charcoal;
   }
 }

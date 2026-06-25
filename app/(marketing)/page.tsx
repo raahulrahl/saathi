@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
-import { auth } from '@clerk/nextjs/server';
+import { getUserId } from '@/lib/auth-guard';
 import { ArrowRight, Calendar, Clock, Plane } from 'lucide-react';
 import { format, formatDistanceToNow, parseISO } from 'date-fns';
 import { FlightComposer } from '@/components/flight-composer';
@@ -58,7 +58,7 @@ export default async function LandingPage({ searchParams }: HomeProps) {
   // Viewer role — used by the composer to flip the submit target between
   // family/companion posting flows.
   let viewerRole: 'family' | 'companion' | null = null;
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (userId) {
     const role = await withUser(userId, async (tx) => {
       const rows = await tx
@@ -106,7 +106,7 @@ export default async function LandingPage({ searchParams }: HomeProps) {
         </section>
       ) : (
         <section>
-          <div className="container flex flex-col items-center gap-10 py-16 md:py-20">
+          <div className="container flex flex-col items-center gap-8 py-12 md:py-16">
             <div className="flex max-w-3xl flex-col items-center gap-5 text-center">
               <span className="inline-flex items-center gap-2 rounded-full border border-oat bg-white px-3 py-1 text-xs font-medium text-warm-charcoal">
                 <span className="font-semibold text-marigold-700">साथी</span> · a little community
@@ -179,9 +179,9 @@ export default async function LandingPage({ searchParams }: HomeProps) {
           </Suspense>
 
           {/* Marquee — ambient community strip */}
-          <section className="py-12">
-            <div className="container mb-4 text-center">
-              <p className="text-xs font-medium uppercase tracking-[0.12em] text-warm-silver">
+          <section className="py-10">
+            <div className="container mb-5 text-center">
+              <p className="text-[13px] font-medium uppercase tracking-[0.12em] text-warm-charcoal">
                 Around today
               </p>
             </div>
@@ -199,7 +199,7 @@ export default async function LandingPage({ searchParams }: HomeProps) {
                 {[...AROUND_TODAY, ...AROUND_TODAY].map((entry, i) => (
                   <li
                     key={i}
-                    className="flex shrink-0 items-center gap-2.5 text-sm leading-none text-warm-charcoal"
+                    className="flex shrink-0 items-center gap-3 text-[15px] leading-none text-warm-charcoal"
                   >
                     <span className={`size-2 shrink-0 rounded-full ${entry.dot}`} aria-hidden />
                     <span className="font-medium text-foreground">{entry.name}</span>
@@ -214,14 +214,14 @@ export default async function LandingPage({ searchParams }: HomeProps) {
           </section>
 
           {/* Closing CTA */}
-          <section className="container pb-24 pt-4 text-center">
+          <section className="container pb-20 pt-2 text-center">
             <Link
               href="/dashboard/new/request"
-              className="clay-hover inline-flex h-12 items-center justify-center rounded-full bg-foreground px-8 text-sm font-semibold text-background"
+              className="clay-hover inline-flex h-14 items-center justify-center rounded-full bg-foreground px-10 text-base font-semibold text-background"
             >
               Post a flight
             </Link>
-            <p className="mt-3 text-sm text-warm-silver">Takes a minute. Free. Always will be.</p>
+            <p className="mt-4 text-sm text-warm-charcoal">Takes a minute. Free. Always will be.</p>
           </section>
         </>
       )}
@@ -262,7 +262,7 @@ async function WorldGlobeSection() {
 
   return (
     <section className="overflow-hidden border-y border-oat bg-gradient-to-b from-cream via-oat-light/30 to-cream">
-      <div className="container grid items-center gap-10 py-16 md:grid-cols-[1fr_minmax(320px,440px)] md:py-20">
+      <div className="container grid items-center gap-10 py-12 md:grid-cols-[1fr_minmax(320px,440px)] md:py-16">
         <div className="max-w-md">
           <p className="clay-label">
             {routes.length > 0 ? 'Right now, on Saathi' : 'The world is waiting'}
@@ -292,6 +292,11 @@ async function WorldGlobeSection() {
 
         <div className="relative mx-auto w-full max-w-[440px]">
           <WorldGlobeClient routes={routes} />
+          <div className="mt-3 flex justify-center">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-oat bg-white/70 px-3 py-1 text-xs font-medium text-warm-charcoal backdrop-blur">
+              ↔ Drag to spin{routes.length > 0 ? ` · ${routes.length} live` : ''}
+            </span>
+          </div>
         </div>
       </div>
     </section>
@@ -360,17 +365,19 @@ async function DiscoveryPanels() {
   // reads as broken, not "early product."
   if (!hasAnyData) {
     return (
-      <section className="container max-w-3xl py-16 text-center">
-        <div className="rounded-3xl border border-dashed border-oat bg-gradient-to-b from-cream to-oat-light/30 p-10">
-          <div className="mb-4 text-4xl" aria-hidden>
+      <section className="container max-w-3xl py-14 text-center">
+        <div className="rounded-3xl border border-dashed border-oat bg-gradient-to-b from-cream to-oat-light/30 p-10 md:p-12">
+          <div className="mb-4 text-5xl" aria-hidden>
             🌼
           </div>
-          <h2 className="font-serif text-2xl">No trips posted yet — you could be the first.</h2>
-          <p className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground">
+          <h2 className="font-serif text-3xl md:text-4xl">
+            No trips posted yet — you could be the first.
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl text-base text-warm-charcoal">
             Flying somewhere? Post an offer so a family can find you. Sending a loved one? Post a
             request so someone kind on the same flight can keep them company.
           </p>
-          <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Button asChild variant="lemon">
               <Link href="/dashboard/new/offer">Offer to help</Link>
             </Button>
@@ -384,7 +391,7 @@ async function DiscoveryPanels() {
   }
 
   return (
-    <section className="container max-w-5xl space-y-16 py-12">
+    <section className="container max-w-5xl space-y-12 py-10">
       {/* Popular routes */}
       {topRoutes.length > 0 && (
         <div>
@@ -395,7 +402,7 @@ async function DiscoveryPanels() {
                 Tap a route to pre-fill the search.
               </p>
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-sm text-muted-foreground">
               {routeCounts.size} distinct route{routeCounts.size === 1 ? '' : 's'} open
             </span>
           </div>
@@ -409,19 +416,19 @@ async function DiscoveryPanels() {
                 <Link
                   key={`${from}-${to}`}
                   href={href}
-                  className="group flex items-center justify-between rounded-2xl border border-oat bg-card px-4 py-3 transition-all hover:border-matcha-600 hover:shadow-sm"
+                  className="group flex items-center justify-between rounded-2xl border border-oat bg-card px-5 py-4 transition-all hover:border-matcha-600 hover:shadow-sm"
                 >
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 font-mono text-sm font-semibold">
+                    <div className="flex items-center gap-1.5 font-mono text-base font-semibold">
                       <span>{from}</span>
-                      <ArrowRight className="size-3.5 text-muted-foreground" />
+                      <ArrowRight className="size-4 text-muted-foreground" />
                       <span>{to}</span>
                     </div>
-                    <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                    <div className="mt-1 truncate text-xs text-muted-foreground">
                       {CITY_BY_IATA.get(from) ?? from} → {CITY_BY_IATA.get(to) ?? to}
                     </div>
                   </div>
-                  <span className="shrink-0 rounded-full bg-matcha-300/30 px-2 py-0.5 text-[11px] font-semibold text-matcha-800">
+                  <span className="shrink-0 rounded-full bg-matcha-300/30 px-2.5 py-1 text-xs font-semibold text-matcha-800">
                     {count >= 5 ? `${count} open` : 'Active'}
                   </span>
                 </Link>
@@ -462,11 +469,11 @@ async function DiscoveryPanels() {
                       }`}
                       aria-hidden
                     />
-                    <span className="font-mono text-sm font-semibold">
-                      {from} <ArrowRight className="inline size-3 text-muted-foreground" /> {to}
+                    <span className="font-mono text-base font-semibold">
+                      {from} <ArrowRight className="inline size-3.5 text-muted-foreground" /> {to}
                     </span>
                     {viaCount > 0 && (
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         via {viaCount} stop{viaCount > 1 ? 's' : ''}
                       </span>
                     )}

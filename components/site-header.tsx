@@ -23,7 +23,7 @@ export async function SiteHeader() {
           <span className="font-display text-2xl font-semibold tracking-tight">Saathi</span>
           <span className="clay-label hidden sm:inline">साथी</span>
         </Link>
-        <nav className="hidden items-center gap-8 text-sm md:flex">
+        <nav className="hidden items-center gap-8 text-[15px] md:flex">
           <Link href="/about" className="font-medium text-warm-charcoal hover:text-foreground">
             About &amp; trust
           </Link>

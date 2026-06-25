@@ -29,7 +29,7 @@ const MAILTO = `mailto:${CONTACT_EMAIL}`;
 export function SiteFooter() {
   return (
     <footer className="mt-16 border-t border-oat bg-background px-4 py-5">
-      <div className="container flex flex-wrap items-center justify-between gap-4 text-xs text-muted-foreground">
+      <div className="container flex flex-wrap items-center justify-between gap-4 text-sm text-muted-foreground">
         {/* ── Left: wordmark + status pill ───────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
           <Link
@@ -45,7 +45,7 @@ export function SiteFooter() {
 
           <Link
             href="/status"
-            className="inline-flex items-center gap-1.5 rounded-full border border-matcha-300/60 bg-matcha-300/10 px-2 py-0.5 text-[11px] font-medium text-matcha-800 transition-colors hover:bg-matcha-300/30"
+            className="inline-flex items-center gap-1.5 rounded-full border border-matcha-300/60 bg-matcha-300/10 px-2.5 py-0.5 text-xs font-medium text-matcha-800 transition-colors hover:bg-matcha-300/30"
           >
             <span className="relative flex size-1.5">
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-matcha-600 opacity-70" />
@@ -74,7 +74,7 @@ export function SiteFooter() {
             <SocialIcon href={TWITTER_URL} label="Twitter / X" Icon={Twitter} external />
             <SocialIcon href={MAILTO} label="Email" Icon={Mail} />
           </div>
-          <span className="text-warm-silver">© {new Date().getFullYear()} Saathi</span>
+          <span className="text-muted-foreground">© {new Date().getFullYear()} Saathi</span>
         </div>
       </div>
     </footer>

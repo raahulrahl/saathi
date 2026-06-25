@@ -92,7 +92,7 @@ export function FlightGlobe({ route, routes, autoRotate = false, className }: Fl
         const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
         if (markerSeen.has(key)) continue;
         markerSeen.add(key);
-        markers.push({ location: [lat, lng], size: 0.06 });
+        markers.push({ location: [lat, lng], size: 0.09 });
       }
     }
 
@@ -105,15 +105,15 @@ export function FlightGlobe({ route, routes, autoRotate = false, className }: Fl
       dark: 0,
       diffuse: 1.2,
       mapSamples: 20000,
-      mapBrightness: 5,
+      mapBrightness: 6,
       baseColor: [0.98, 0.97, 0.96],
       markerColor: MATCHA_600,
       glowColor: [0.94, 0.93, 0.91],
       markers,
       arcs,
       arcColor: MATCHA_ARC,
-      arcWidth: 2,
-      arcHeight: 0.4,
+      arcWidth: 2.6,
+      arcHeight: 0.45,
     };
 
     globeRef.current?.destroy();

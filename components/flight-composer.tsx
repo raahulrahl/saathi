@@ -189,7 +189,7 @@ export function FlightComposer({
         }}
         className={cn(
           'relative rounded-[32px] border border-oat bg-card shadow-clay',
-          isHero ? 'p-6 md:p-8' : 'p-4 md:p-5',
+          isHero ? 'p-7 md:p-10' : 'p-4 md:p-5',
         )}
       >
         {/* Route row — source pinned left, destination pinned right, dashed
@@ -237,7 +237,7 @@ export function FlightComposer({
             <button
               type="button"
               onClick={addLayover}
-              className="clay-hover inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed border-oat bg-transparent px-3 py-1.5 text-xs font-medium text-warm-charcoal hover:bg-oat-light"
+              className="clay-hover inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed border-oat bg-transparent px-3 py-1.5 text-sm font-medium text-warm-charcoal hover:bg-oat-light"
             >
               <Plus className="size-3.5" /> Add
             </button>
@@ -282,7 +282,7 @@ export function FlightComposer({
             </Label>
             <div
               className={cn(
-                'flex flex-wrap items-center gap-1.5 rounded-lg border border-oat bg-white px-2 py-1.5',
+                'flex min-h-12 flex-wrap items-center gap-1.5 rounded-lg border border-oat bg-white px-2 py-1.5',
                 'focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2',
               )}
             >
@@ -426,7 +426,7 @@ function RouteDot({ index, total, label, value, onChange, onRemove, big = false 
         aria-hidden
       />
       <div className="space-y-0.5">
-        <div className="clay-label text-[10px]">{label}</div>
+        <div className="clay-label text-[11px]">{label}</div>
         <div className="relative">
           <input
             value={value}
@@ -496,7 +496,7 @@ function ModeSubmit({ mode, onSelect, pending }: ModeSubmitProps) {
         onClick={() => onSelect('offer')}
         disabled={pending}
         className={cn(
-          'clay-hover inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors',
+          'clay-hover inline-flex items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold transition-colors',
           mode === 'offer'
             ? 'bg-foreground text-background shadow-clay'
             : 'bg-transparent text-warm-charcoal hover:text-foreground',
@@ -510,7 +510,7 @@ function ModeSubmit({ mode, onSelect, pending }: ModeSubmitProps) {
         onClick={() => onSelect('seek')}
         disabled={pending}
         className={cn(
-          'clay-hover inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors',
+          'clay-hover inline-flex items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold transition-colors',
           mode === 'seek'
             ? 'bg-foreground text-background shadow-clay'
             : 'bg-transparent text-warm-charcoal hover:text-foreground',
@@ -578,7 +578,7 @@ function LiveCounter({ route, date, flights, enabled }: LiveCounterProps) {
     <div className="mt-4 flex items-center justify-center">
       <a
         href={`/browse?${params.toString()}`}
-        className="clay-hover inline-flex items-center gap-2 rounded-full bg-oat-light px-4 py-2 text-sm text-foreground"
+        className="clay-hover inline-flex items-center gap-2 rounded-full bg-oat-light px-4 py-2.5 text-[15px] text-foreground"
       >
         <span
           className={cn(

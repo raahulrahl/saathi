@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { ChevronDown } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'FAQ',
@@ -233,13 +234,21 @@ const SECTIONS: Section[] = [
   },
 ];
 
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
 export default function FaqPage() {
   return (
-    <article className="container max-w-2xl py-14">
-      <header>
+    <article className="container max-w-5xl py-14">
+      <header className="max-w-2xl">
         <p className="clay-label">FAQ</p>
         <h1 className="mt-2 font-serif text-4xl md:text-5xl">Frequently asked.</h1>
-        <p className="mt-4 text-base text-muted-foreground">
+        <p className="mt-4 text-lg leading-relaxed text-warm-charcoal">
           Short, honest answers to the questions families and travellers actually ask. Can&rsquo;t
           find yours?{' '}
           <a
@@ -251,26 +260,57 @@ export default function FaqPage() {
         </p>
       </header>
 
-      <div className="mt-12 space-y-12">
-        {SECTIONS.map((section) => (
-          <section key={section.title} className="space-y-6">
-            <h2 className="clay-label">{section.title}</h2>
-            <dl className="space-y-6 border-t border-dashed border-oat pt-6">
-              {section.entries.map(({ q, a }, i) => (
-                <div key={q} className={i > 0 ? 'border-t border-dashed border-oat pt-6' : ''}>
-                  <dt className="font-serif text-lg text-foreground">{q}</dt>
-                  <dd className="mt-2 text-sm leading-relaxed text-warm-charcoal">{a}</dd>
-                </div>
+      <div className="mt-12 grid gap-10 lg:grid-cols-[210px_1fr]">
+        {/* Sticky category rail — desktop wayfinding so the page scans
+            instead of reading top-to-bottom. */}
+        <aside className="hidden lg:block">
+          <nav className="sticky top-24">
+            <p className="clay-label mb-3">Jump to</p>
+            <ul className="space-y-1">
+              {SECTIONS.map((section) => (
+                <li key={section.title}>
+                  <a
+                    href={`#${slugify(section.title)}`}
+                    className="block rounded-lg px-3 py-2 text-[15px] text-warm-charcoal transition-colors hover:bg-oat-light hover:text-foreground"
+                  >
+                    {section.title}
+                  </a>
+                </li>
               ))}
-            </dl>
-          </section>
-        ))}
+            </ul>
+          </nav>
+        </aside>
+
+        {/* Accordion sections — collapsed by default. Native <details>, so
+            it works without JS and stays accessible. */}
+        <div className="min-w-0 space-y-12">
+          {SECTIONS.map((section) => (
+            <section key={section.title} id={slugify(section.title)} className="scroll-mt-24">
+              <h2 className="clay-label">{section.title}</h2>
+              <div className="mt-3 overflow-hidden rounded-3xl border border-oat bg-card px-5 shadow-clay sm:px-7">
+                {section.entries.map(({ q, a }) => (
+                  <details key={q} className="border-t border-dashed border-oat first:border-t-0">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 [&::-webkit-details-marker]:hidden">
+                      <span className="font-serif text-lg text-foreground">{q}</span>
+                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-oat text-warm-charcoal transition-transform [[open]_&]:rotate-180">
+                        <ChevronDown className="size-4" />
+                      </span>
+                    </summary>
+                    <div className="pb-5 pr-2 text-base leading-relaxed text-warm-charcoal sm:pr-10">
+                      {a}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
       </div>
 
       {/* Still stuck CTA */}
       <div className="mt-16 rounded-3xl border border-oat bg-gradient-to-br from-cream to-oat-light/30 p-8 shadow-clay">
         <p className="font-serif text-xl">Still have a question?</p>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="mt-2 text-base text-warm-charcoal">
           We usually reply within a day. No bots, no tickets.{' '}
           <a
             href="mailto:hello@getsaathi.com"
