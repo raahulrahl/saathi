@@ -10,12 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # No `version:` here on purpose. pnpm/action-setup@v4 reads the
+      # No `version:` here on purpose. pnpm/action-setup@v6 reads the
       # version from `packageManager` in package.json (currently
       # pnpm@9.12.0). Specifying both breaks the action with
       # ERR_PNPM_BAD_PM_VERSION — keep package.json as the single source
       # of truth and bump it there when the time comes.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
