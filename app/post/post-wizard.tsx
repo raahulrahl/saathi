@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { LanguageMultiSelect } from '@/components/language-multi-select';
 import { HELP_CATEGORIES, LANGUAGES } from '@/lib/languages';
 import { AIRPORTS, isValidIata } from '@/lib/iata';
+import { canonicalFlight } from '@/lib/flight';
 import { createTripAction, type TripInput } from './actions';
 
 export interface FlightLookupResult {
@@ -300,7 +301,7 @@ export function PostWizard({
                   <Input
                     value={state.flight_numbers[i] ?? ''}
                     onChange={(e) => {
-                      const value = e.target.value.toUpperCase().replace(/\s+/g, '');
+                      const value = canonicalFlight(e.target.value);
                       setState((prev) => {
                         const next = [...prev.flight_numbers];
                         next[i] = value;

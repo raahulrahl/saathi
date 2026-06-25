@@ -87,6 +87,9 @@ describe('matchingFlightNumbers', () => {
   it('intersects case-insensitively and whitespace-insensitively', () => {
     expect(matchingFlightNumbers(['qr 540', 'LH 743'], ['QR540'])).toEqual(['qr 540']);
   });
+  it('intersects across hyphen/whitespace formatting differences', () => {
+    expect(matchingFlightNumbers(['QR540'], ['QR-540'])).toEqual(['QR540']);
+  });
   it('returns empty when nothing intersects', () => {
     expect(matchingFlightNumbers(['QR540'], ['LH743'])).toEqual([]);
   });

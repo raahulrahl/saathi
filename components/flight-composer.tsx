@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { isValidIata, searchAirports, type Airport } from '@/lib/iata';
 import { cn } from '@/lib/utils';
+import { canonicalFlight } from '@/lib/flight';
 
 /**
  * Flight Composer — the one input the product turns around.
@@ -66,10 +67,6 @@ const TIME_BANDS: Array<{
   { id: 'evening', label: 'Evening', icon: Sunset },
   { id: 'redeye', label: 'Red-eye', icon: MoonStar },
 ];
-
-function normaliseFlight(raw: string): string {
-  return raw.trim().toUpperCase().replace(/\s+/g, '');
-}
 
 function defaultFutureDate(): string {
   const d = new Date();
@@ -122,7 +119,7 @@ export function FlightComposer({
   }
 
   function addFlight(raw: string) {
-    const fn = normaliseFlight(raw);
+    const fn = canonicalFlight(raw);
     if (!fn) return;
     setFlights((prev) => (prev.includes(fn) ? prev : [...prev, fn]));
     setFlightDraft('');
@@ -147,7 +144,7 @@ export function FlightComposer({
     }
     if (date) p.set('date', date);
     // Flush any pending draft into the list on submit.
-    const pending = normaliseFlight(flightDraft);
+    const pending = canonicalFlight(flightDraft);
     const allFlights = pending && !flights.includes(pending) ? [...flights, pending] : flights;
     if (allFlights.length) p.set('fn', allFlights.join(','));
     if (airline) p.set('airline', airline);

@@ -33,6 +33,8 @@
  * quality. The scorer now leans entirely on language + route + date + reviews.
  */
 
+import { canonicalFlight } from '@/lib/flight';
+
 export interface RankableTrip {
   id: string;
   user_id: string;
@@ -121,19 +123,14 @@ export function languageBand(
   return { band: 'none', matched: [] };
 }
 
-/** Normalise flight numbers for comparison: uppercase, strip whitespace. */
-function normaliseFlight(fn: string): string {
-  return fn.trim().toUpperCase().replace(/\s+/g, '');
-}
-
 /** Returns the set of flight numbers that appear on both sides. */
 export function matchingFlightNumbers(
   tripFlights: readonly string[] | null | undefined,
   searcherFlights: readonly string[] | null | undefined,
 ): string[] {
   if (!tripFlights || !searcherFlights) return [];
-  const searcherSet = new Set(searcherFlights.map(normaliseFlight));
-  return tripFlights.filter((fn) => searcherSet.has(normaliseFlight(fn)));
+  const searcherSet = new Set(searcherFlights.map(canonicalFlight));
+  return tripFlights.filter((fn) => searcherSet.has(canonicalFlight(fn)));
 }
 
 export function scoreTrip<T extends RankableTrip>(trip: T, criteria: SearchCriteria): Scored<T> {

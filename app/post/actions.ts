@@ -25,6 +25,7 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { withUser } from '@/lib/db';
 import { isValidIata } from '@/lib/iata';
+import { canonicalFlight, FLIGHT_NUMBER_RE } from '@/lib/flight';
 import { LANGUAGES } from '@/lib/languages';
 import { moderateText } from '@/lib/moderation';
 import { enqueueMatchNotifications } from '@/lib/notifications/enqueue';
@@ -53,14 +54,15 @@ const TripSchema = z
       .preprocess(
         (v) => {
           if (!Array.isArray(v)) return v;
-          return v.map((s) =>
-            typeof s === 'string' ? s.trim().toUpperCase().replace(/[\s-]/g, '') : s,
-          );
+          return v.map((s) => (typeof s === 'string' ? canonicalFlight(s) : s));
         },
         z.array(
           z
             .string()
-            .regex(/^$|^[A-Z0-9]{2}\d{1,4}$/, 'Flight number must look like "QR540" or "6E123".'),
+            .refine(
+              (s) => s === '' || FLIGHT_NUMBER_RE.test(s),
+              'Flight number must look like "QR540" or "6E123".',
+            ),
         ),
       )
       .optional()

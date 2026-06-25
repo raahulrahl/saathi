@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { withService } from '@/lib/db';
 import { flightCache } from '@/lib/db/schema';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { canonicalFlight, FLIGHT_NUMBER_RE } from '@/lib/flight';
 
 /**
  * Flight lookup API using AirLabs.
@@ -43,8 +44,8 @@ const RATE_LIMIT_PER_MINUTE = 20;
 
 const RequestSchema = z.object({
   flightNumber: z.preprocess(
-    (v) => (typeof v === 'string' ? v.trim().toUpperCase().replace(/[\s-]/g, '') : v),
-    z.string().regex(/^[A-Z0-9]{2}\d{1,4}$/, 'Flight number must look like "QR540" or "6E123".'),
+    (v) => (typeof v === 'string' ? canonicalFlight(v) : v),
+    z.string().regex(FLIGHT_NUMBER_RE, 'Flight number must look like "QR540" or "6E123".'),
   ),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
 });

@@ -15,6 +15,7 @@ import { withUser } from '@/lib/db';
 import { profiles, publicTrips } from '@/lib/db/schema';
 import { rankTrips, type RankableTrip, type Scored } from '@/lib/matching';
 import { isValidIata, AIRPORTS } from '@/lib/iata';
+import { canonicalFlight } from '@/lib/flight';
 import {
   DEFAULT_DATE_WINDOW_DAYS,
   enrichTripsWithProfiles,
@@ -507,10 +508,7 @@ async function DiscoveryPanels() {
 // ─────────────────────────────────────────────────────────────────────
 
 function parseFlightNumbers(fn: string): string[] {
-  return fn
-    .split(',')
-    .map((s) => s.trim().toUpperCase().replace(/\s+/g, ''))
-    .filter(Boolean);
+  return fn.split(',').map(canonicalFlight).filter(Boolean);
 }
 
 async function Results({

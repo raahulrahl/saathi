@@ -9,6 +9,7 @@ import { LanguageChipRow } from '@/components/language-chip';
 import { RouteLine } from '@/components/route-line';
 import { cn } from '@/lib/utils';
 import type { Scored } from '@/lib/matching';
+import { canonicalFlight } from '@/lib/flight';
 
 export interface TripCardData {
   id: string;
@@ -117,8 +118,7 @@ export function TripCard({ data, viewerLanguages = [], scored, className }: Trip
             <div className="flex flex-wrap gap-1.5">
               {data.flight_numbers.map((fn) => {
                 const isMatch = !!scored?.matchedFlightNumbers?.some(
-                  (m) =>
-                    m.toLowerCase().replace(/\s+/g, '') === fn.toLowerCase().replace(/\s+/g, ''),
+                  (m) => canonicalFlight(m) === canonicalFlight(fn),
                 );
                 return (
                   <Badge

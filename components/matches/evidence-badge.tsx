@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import type { Scored } from '@/lib/matching';
+import { canonicalFlight } from '@/lib/flight';
 
 /**
  * Plain-English translation of a Scored result's matching band. Lives
@@ -27,9 +28,7 @@ interface EvidenceBadgeProps {
 
 export function EvidenceBadge({ scored, origin, destination, date }: EvidenceBadgeProps) {
   if (scored.flightMatch) {
-    const flights = scored.matchedFlightNumbers
-      .map((s) => s.toUpperCase().replace(/\s+/g, ''))
-      .join(' + ');
+    const flights = scored.matchedFlightNumbers.map(canonicalFlight).join(' + ');
     return <Badge variant="matcha">● Also on {flights}</Badge>;
   }
 
