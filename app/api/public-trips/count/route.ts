@@ -7,7 +7,7 @@ import { dateWindow } from '@/lib/dates';
 /**
  * Public trip-count endpoint for client components that can't talk to the
  * DB directly. Replaces the per-component `createClient(...)` shims in
- * peek-widget.tsx and flight-composer.tsx that read public_trips with the
+ * flight-composer.tsx that read public_trips with the
  * anon key — Drizzle/postgres.js are server-only.
  *
  * Runs as anon (withUser(null)) so security_invoker on public_trips +

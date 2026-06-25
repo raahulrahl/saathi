@@ -106,7 +106,6 @@ const TripSchema = z
   });
 
 export type TripInput = z.infer<typeof TripSchema>;
-export type TravellerInput = z.infer<typeof TravellerSchema>;
 
 export async function createTripAction(input: TripInput) {
   const parsed = TripSchema.safeParse(input);

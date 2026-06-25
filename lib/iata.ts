@@ -637,12 +637,3 @@ export function searchAirports(query: string, limit = 8): Airport[] {
       a.name.toLowerCase().includes(q),
   ).slice(0, limit);
 }
-
-/**
- * Pretty-format an IATA code for display. Returns "City (IATA)" when
- * we have metadata, or just the uppercased code when we don't.
- */
-export function formatAirport(iata: string): string {
-  const a = BY_IATA.get(iata.toUpperCase());
-  return a ? `${a.city} (${a.iata})` : iata.toUpperCase();
-}

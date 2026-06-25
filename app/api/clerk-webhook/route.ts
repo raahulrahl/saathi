@@ -46,24 +46,6 @@ type ClerkWebhookEvent =
   | { type: 'session.created'; data: Record<string, unknown> }
   | { type: string; data: Record<string, unknown> };
 
-/**
- * Map Clerk's provider string to our verifications.channel enum.
- * Matches by substring: Clerk sends variants across versions
- * ('oauth_linkedin_oidc', 'linkedin_oidc', 'Linkedin_oidc') and strict
- * equality would silently drop any of them. See lib/clerk-sync.ts for
- * the same mapping.
- */
-function providerToChannel(provider: string): string | null {
-  const p = provider.toLowerCase();
-  if (p.includes('linkedin')) return 'linkedin';
-  if (p.includes('twitter') || p === 'oauth_x' || p === 'x' || p.endsWith('_x')) {
-    return 'twitter';
-  }
-  if (p.includes('google')) return 'google';
-  if (p.includes('facebook')) return 'facebook';
-  return null;
-}
-
 export async function POST(request: NextRequest) {
   const secret = process.env.CLERK_WEBHOOK_SECRET;
   if (!secret) {
@@ -154,9 +136,7 @@ export async function POST(request: NextRequest) {
     // public.verifications table for trust badges. That table was
     // dropped in 0009 — verification wasn't doing useful work after
     // the onboarding simplification (no 2-of-N gate, inconsistent
-    // trust signal). providerToChannel() remains in the file as
-    // defensive documentation of which OAuth providers we support.
-    void providerToChannel; // keep ref for future re-use
+    // trust signal).
   }
 
   // user.deleted: drop the profiles row. Every FK into profiles is

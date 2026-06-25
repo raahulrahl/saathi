@@ -1,7 +1,7 @@
 /**
  * Date helpers shared across server and client code. Kept free of
- * `server-only` / `client-only` imports so both `lib/search.ts` (server)
- * and `components/peek-widget.tsx` (client) can import from here.
+ * `server-only` / `client-only` imports so both server code (`lib/search.ts`)
+ * and client components can import from here.
  */
 
 /**

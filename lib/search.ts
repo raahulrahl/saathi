@@ -7,10 +7,6 @@ import type { TripCardData } from '@/components/trip-card';
 import { dateWindow } from '@/lib/dates';
 import type { RankableTrip } from '@/lib/matching';
 
-// Re-export so existing server callers can keep importing from `lib/search`.
-// New callers (client components) should import from `lib/dates` directly.
-export { dateWindow };
-
 /**
  * Server-side search helpers. Each accepts a `DbTx` — callers wrap with
  * `withUser(userId | null, tx => …)` (role = anon | authenticated). The
