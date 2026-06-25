@@ -7,7 +7,7 @@ aren't blocking launch to a small beta.
 
 ## M01 — `/api/flights/lookup` has no auth or rate limit
 
-**Status:** ✅ FIXED in [supabase/migrations/0018_rate_limits.sql](../supabase/migrations/0018_rate_limits.sql) + [lib/rate-limit.ts](../lib/rate-limit.ts) + [app/api/flights/lookup/route.ts](../app/api/flights/lookup/route.ts) (2026-04-18). Now requires a signed-in Clerk user, applies a 20/minute per-user rate limit via a pg-function-backed fixed-window counter, and validates the flight-number format AFTER canonicalisation so garbage inputs can't poison `flight_cache`. Anonymous users never hit this endpoint (only the post wizard calls it, and posting requires auth), so the auth gate doesn't break any flow. Content below preserved for history.
+**Status:** ✅ FIXED in [db/migrations/0018_rate_limits.sql](../db/migrations/0018_rate_limits.sql) + [lib/rate-limit.ts](../lib/rate-limit.ts) + [app/api/flights/lookup/route.ts](../app/api/flights/lookup/route.ts) (2026-04-18). Now requires a signed-in Clerk user, applies a 20/minute per-user rate limit via a pg-function-backed fixed-window counter, and validates the flight-number format AFTER canonicalisation so garbage inputs can't poison `flight_cache`. Anonymous users never hit this endpoint (only the post wizard calls it, and posting requires auth), so the auth gate doesn't break any flow. Content below preserved for history.
 
 **File:** [app/api/flights/lookup/route.ts:142-347](../app/api/flights/lookup/route.ts)
 
@@ -59,7 +59,7 @@ Store canonical form. Delete `normaliseFlight` once storage is clean.
 
 ## M03 — Auto-match + notify is fire-and-forget inside a redirecting Server Action
 
-**Status:** ✅ FIXED in [supabase/migrations/0017_notification_queue.sql](../supabase/migrations/0017_notification_queue.sql) + [lib/notifications/](../lib/notifications/) + [app/post/actions.ts](../app/post/actions.ts) + [app/api/cron/send-notifications/route.ts](../app/api/cron/send-notifications/route.ts) + [vercel.json](../vercel.json) (2026-04-18). Durable queue with atomic claim-via-SKIP-LOCKED, per-recipient cooldown, aggregation into digest emails, retries with exponential backoff. Content below preserved for history.
+**Status:** ✅ FIXED in [db/migrations/0017_notification_queue.sql](../db/migrations/0017_notification_queue.sql) + [lib/notifications/](../lib/notifications/) + [app/post/actions.ts](../app/post/actions.ts) + [app/api/cron/send-notifications/route.ts](../app/api/cron/send-notifications/route.ts) + [vercel.json](../vercel.json) (2026-04-18). Durable queue with atomic claim-via-SKIP-LOCKED, per-recipient cooldown, aggregation into digest emails, retries with exponential backoff. Content below preserved for history.
 
 **File:** [app/post/actions.ts:150-158](../app/post/actions.ts)
 
@@ -89,7 +89,7 @@ Gives you retries + idempotency.
 
 ## M04 — No notification dedupe
 
-**Status:** ✅ FIXED in [supabase/migrations/0017_notification_queue.sql](../supabase/migrations/0017_notification_queue.sql) — dedupe is enforced at the schema level via `UNIQUE (new_trip_id, recipient_user_id, channel)` on `pending_notifications` with `ON CONFLICT DO NOTHING` at the insert site. Content below preserved for history.
+**Status:** ✅ FIXED in [db/migrations/0017_notification_queue.sql](../db/migrations/0017_notification_queue.sql) — dedupe is enforced at the schema level via `UNIQUE (new_trip_id, recipient_user_id, channel)` on `pending_notifications` with `ON CONFLICT DO NOTHING` at the insert site. Content below preserved for history.
 
 **File:** ~~lib/notify.ts~~ (now lib/notifications/enqueue.ts)
 
@@ -120,9 +120,9 @@ fail-open so a human sweep can catch what OpenAI would have caught.
 
 ## M06 — Race on concurrent `accept` for sibling match_requests
 
-**Status:** ✅ FIXED in [supabase/migrations/0020_match_accept_race.sql](../supabase/migrations/0020_match_accept_race.sql) (2026-04-18). `handle_match_request_accepted` now claims the trip **first** with a first-write-wins `UPDATE ... WHERE status='open' RETURNING user_id INTO v_poster`, and raises if zero rows were affected. A second concurrent accept finds the trip already `matched`, gets zero rows, and the BEFORE UPDATE trigger aborts — keeping the match_request pending (or letting it get swept to `auto_declined` by the first accept's sibling sweep, whichever commits first). Content below preserved for history.
+**Status:** ✅ FIXED in [db/migrations/0020_match_accept_race.sql](../db/migrations/0020_match_accept_race.sql) (2026-04-18). `handle_match_request_accepted` now claims the trip **first** with a first-write-wins `UPDATE ... WHERE status='open' RETURNING user_id INTO v_poster`, and raises if zero rows were affected. A second concurrent accept finds the trip already `matched`, gets zero rows, and the BEFORE UPDATE trigger aborts — keeping the match_request pending (or letting it get swept to `auto_declined` by the first accept's sibling sweep, whichever commits first). Content below preserved for history.
 
-**File:** [supabase/migrations/0005_clerk.sql:385-415](../supabase/migrations/0005_clerk.sql)
+**File:** [db/migrations/0005_clerk.sql:385-415](../db/migrations/0005_clerk.sql)
 
 `handle_match_request_accepted` inserts into `matches` and then updates
 `trips.status = 'matched' WHERE status = 'open'`. The `matches` uniqueness
@@ -154,24 +154,24 @@ cleanly; the UI can refetch and show "this trip is already matched."
 
 ## M07 — `blocks` table is defined but never consulted in RLS
 
-**Status:** ✅ FIXED in [supabase/migrations/0019_blocks_enforcement.sql](../supabase/migrations/0019_blocks_enforcement.sql) + [lib/notifications/enqueue.ts](../lib/notifications/enqueue.ts) (2026-04-18). Symmetric enforcement: if either party has blocked the other, new match_requests and new messages are refused at the RLS layer, and the notification enqueue filters the recipient out so blocked users don't generate inbox noise either. Historical matches/messages stay readable — the block only gates future writes. Content below preserved for history.
+**Status:** ✅ FIXED in [db/migrations/0019_blocks_enforcement.sql](../db/migrations/0019_blocks_enforcement.sql) + [lib/notifications/enqueue.ts](../lib/notifications/enqueue.ts) (2026-04-18). Symmetric enforcement: if either party has blocked the other, new match_requests and new messages are refused at the RLS layer, and the notification enqueue filters the recipient out so blocked users don't generate inbox noise either. Historical matches/messages stay readable — the block only gates future writes. Content below preserved for history.
 
-**Files:** [supabase/migrations/0001_init.sql:193-199](../supabase/migrations/0001_init.sql),
-[supabase/migrations/0005_clerk.sql:224-230](../supabase/migrations/0005_clerk.sql)
+**Files:** [db/migrations/0001_init.sql:193-199](../db/migrations/0001_init.sql),
+[db/migrations/0005_clerk.sql:224-230](../db/migrations/0005_clerk.sql)
 
 `blocks` exists. It does nothing. A blocked user can still send a
 match_request on a trip owned by the user who blocked them.
 
 **Fix:** add `AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.blocker_id = t.user_id AND b.blocked_id = clerk_user_id())`
 to the `match_requests: requester insert` policy in
-[0005_clerk.sql:277-286](../supabase/migrations/0005_clerk.sql). Consider
+[0005_clerk.sql:277-286](../db/migrations/0005_clerk.sql). Consider
 mirroring the check in `messages: participants send`.
 
 ---
 
 ## M08 — Trip rollback is not transactional
 
-**Status:** ✅ FIXED in [supabase/migrations/0022_create_trip_rpc.sql](../supabase/migrations/0022_create_trip_rpc.sql) + [app/post/actions.ts](../app/post/actions.ts) (2026-04-18). The trip insert and traveller inserts now happen inside a single `create_trip_with_travellers` Postgres function — one transaction, atomic. The `trip_legs_sync` trigger fires inside the same transaction, so legs also roll back on failure. No more naive DELETE rollback path to leave ghost trip rows. Content below preserved for history.
+**Status:** ✅ FIXED in [db/migrations/0022_create_trip_rpc.sql](../db/migrations/0022_create_trip_rpc.sql) + [app/post/actions.ts](../app/post/actions.ts) (2026-04-18). The trip insert and traveller inserts now happen inside a single `create_trip_with_travellers` Postgres function — one transaction, atomic. The `trip_legs_sync` trigger fires inside the same transaction, so legs also roll back on failure. No more naive DELETE rollback path to leave ghost trip rows. Content below preserved for history.
 
 **File:** [app/post/actions.ts:134-144](../app/post/actions.ts)
 
@@ -188,9 +188,9 @@ current two-step delete-on-failure is best-effort.
 
 ## M09 — `notes` is free-text and anon-readable via `public_trips`
 
-**Status:** ✅ FIXED via Option C combo in [supabase/migrations/0021_lock_down_notes.sql](../supabase/migrations/0021_lock_down_notes.sql) + [app/post/actions.ts](../app/post/actions.ts) (2026-04-18). (1) Rebuilt `public_trips` view without `notes`. (2) Revoked anon's blanket `SELECT` on `public.trips` and re-granted column-level `SELECT` on everything except `notes` — blocks the direct-PostgREST scraping vector. (3) Added Zod `.refine` steps to the trip-post schema that reject obvious phone/email patterns in notes. Authenticated users still see notes via the base table for match-participant display. The discovery-friendly anon posture for routes/dates/flights/languages is preserved. Content below preserved for history.
+**Status:** ✅ FIXED via Option C combo in [db/migrations/0021_lock_down_notes.sql](../db/migrations/0021_lock_down_notes.sql) + [app/post/actions.ts](../app/post/actions.ts) (2026-04-18). (1) Rebuilt `public_trips` view without `notes`. (2) Revoked anon's blanket `SELECT` on `public.trips` and re-granted column-level `SELECT` on everything except `notes` — blocks the direct-PostgREST scraping vector. (3) Added Zod `.refine` steps to the trip-post schema that reject obvious phone/email patterns in notes. Authenticated users still see notes via the base table for match-participant display. The discovery-friendly anon posture for routes/dates/flights/languages is preserved. Content below preserved for history.
 
-**File:** [supabase/migrations/0013_trip_elders.sql:96](../supabase/migrations/0013_trip_elders.sql) (view later rebuilt in 0014)
+**File:** [db/migrations/0013_trip_elders.sql:96](../db/migrations/0013_trip_elders.sql) (view later rebuilt in 0014)
 
 Per `CLAUDE.md` memory, anon-readable `public_trips` is **intentional**
 pre-launch (discovery > privacy while the flywheel spins up). Leaving

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { eq, sql } from 'drizzle-orm';
 import { requireUserId } from '@/lib/auth-guard';
-import { syncClerkUserToSupabase } from '@/lib/clerk-sync';
+import { syncClerkUser } from '@/lib/clerk-sync';
 import { withUser } from '@/lib/db';
 import { profileLanguages } from '@/lib/db/schema';
 
@@ -15,7 +15,7 @@ import { profileLanguages } from '@/lib/db/schema';
  *   - Languages exist        → returning user, send to /dashboard.
  *
  * Why `profile_languages` and not `profile.role`? The Clerk self-heal
- * (`syncClerkUserToSupabase`) creates a profile row with `role:
+ * (`syncClerkUser`) creates a profile row with `role:
  * 'companion'` as a NOT NULL default on every sign-up. That means
  * `role` is always set — even before the user fills the onboarding
  * form. Languages, on the other hand, are ONLY inserted by the
@@ -26,7 +26,7 @@ export default async function PostAuthPage() {
   const userId = await requireUserId('/post-auth');
 
   // Self-heal: ensure a profile row exists.
-  await syncClerkUserToSupabase(userId);
+  await syncClerkUser(userId);
 
   const count = await withUser(userId, async (tx) => {
     const rows = await tx

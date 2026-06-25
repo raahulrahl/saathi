@@ -1,6 +1,6 @@
 # 04 — Flight-number matching ignores travel date
 
-**Status:** ✅ FIXED in [lib/matching.ts](../lib/matching.ts) (`rankTrips` now always applies the date window) + [lib/search.ts](../lib/search.ts) + [lib/auto-match.ts](../lib/auto-match.ts) (leg queries always bounded by date window via [supabase/migrations/0016_trip_legs.sql](../supabase/migrations/0016_trip_legs.sql)) (2026-04-18). Content below preserved for history.
+**Status:** ✅ FIXED in [lib/matching.ts](../lib/matching.ts) (`rankTrips` now always applies the date window) + [lib/search.ts](../lib/search.ts) + [lib/auto-match.ts](../lib/auto-match.ts) (leg queries always bounded by date window via [db/migrations/0016_trip_legs.sql](../db/migrations/0016_trip_legs.sql)) (2026-04-18). Content below preserved for history.
 **Severity:** HIGH
 **Area:** matching
 **Found:** 2026-04-18

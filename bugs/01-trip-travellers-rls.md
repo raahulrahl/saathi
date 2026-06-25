@@ -1,6 +1,6 @@
 # 01 — `trip_travellers` RLS blocks the matched companion from reading traveller PII
 
-**Status:** ✅ FIXED in [supabase/migrations/0015_trip_travellers_match_read.sql](../supabase/migrations/0015_trip_travellers_match_read.sql) (2026-04-18)
+**Status:** ✅ FIXED in [db/migrations/0015_trip_travellers_match_read.sql](../db/migrations/0015_trip_travellers_match_read.sql) (2026-04-18)
 **Severity:** HIGH
 **Area:** database / RLS
 **Found:** 2026-04-18
@@ -24,7 +24,7 @@ doesn't implement the "accepted requester" half.
 
 ## Where the bug lives
 
-Defined in [supabase/migrations/0013_trip_elders.sql:33-48](../supabase/migrations/0013_trip_elders.sql),
+Defined in [db/migrations/0013_trip_elders.sql:33-48](../db/migrations/0013_trip_elders.sql),
 carried through the rename in `0014_rename_trip_elders.sql`:
 
 ```sql
@@ -82,7 +82,7 @@ SELECT-only policy won't open up writes.
 
 ## New migration
 
-`supabase/migrations/0015_trip_travellers_match_read.sql` — lands after
+`db/migrations/0015_trip_travellers_match_read.sql` — lands after
 the 0014 rename, before any graph-matching migrations (see
 [ALGORITHM.md](ALGORITHM.md)).
 

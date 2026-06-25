@@ -1,9 +1,9 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-import { syncClerkUserToSupabase } from '@/lib/clerk-sync';
+import { syncClerkUser } from '@/lib/clerk-sync';
 
 /**
- * Manual trigger for the Clerk → Supabase self-heal. Called from the
+ * Manual trigger for the Clerk → Postgres self-heal. Called from the
  * onboarding page when the user hits "this account is already linked"
  * from Clerk — the link clearly exists on Clerk's side, we just haven't
  * mirrored it into `verifications` yet. Hitting this endpoint + reloading
@@ -19,7 +19,7 @@ export async function POST() {
     return NextResponse.json({ ok: false, error: 'Not signed in' }, { status: 401 });
   }
   try {
-    await syncClerkUserToSupabase(userId);
+    await syncClerkUser(userId);
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Sync failed';

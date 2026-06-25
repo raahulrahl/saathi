@@ -21,7 +21,7 @@
  * happens inside checkWhatsAppVerification() on success — same update
  * that blanks the OTP columns. If it fails, the lib surfaces it as a
  * thrown error, which the .catch() below turns into a non-match. We
- * treat DB failure == verification failure so a flaky Supabase doesn't
+ * treat DB failure == verification failure so a flaky database doesn't
  * stamp a half-verified profile.
  */
 

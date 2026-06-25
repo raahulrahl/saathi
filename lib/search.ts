@@ -16,7 +16,7 @@ export { dateWindow };
  * `withUser(userId | null, tx => …)` (role = anon | authenticated). The
  * RLS policies + `security_invoker=true` on the views do the rest.
  *
- * History (post-Supabase): the parallel `Promise.all` in fetchViewerProfile
+ * History: the parallel `Promise.all` in fetchViewerProfile
  * has been sequentialized. postgres.js serializes statements within a
  * transaction, so issuing two queries via Promise.all on the same tx
  * doesn't actually parallelize — and protocol-level interleaving on a

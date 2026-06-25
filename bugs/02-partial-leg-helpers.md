@@ -1,6 +1,6 @@
 # 02 — Partial-leg helpers never match (the DOH→AMS student case)
 
-**Status:** ✅ FIXED structurally in [supabase/migrations/0016_trip_legs.sql](../supabase/migrations/0016_trip_legs.sql) + [lib/search.ts](../lib/search.ts) + [lib/auto-match.ts](../lib/auto-match.ts) (2026-04-18). Content below preserved for history.
+**Status:** ✅ FIXED structurally in [db/migrations/0016_trip_legs.sql](../db/migrations/0016_trip_legs.sql) + [lib/search.ts](../lib/search.ts) + [lib/auto-match.ts](../lib/auto-match.ts) (2026-04-18). Content below preserved for history.
 **Severity:** HIGH
 **Area:** search / matching
 **Found:** 2026-04-18
@@ -24,7 +24,7 @@ Two places, same shape:
 [lib/search.ts:96-111](../lib/search.ts)
 
 ```ts
-let query = supabase
+let query = client
   .from('public_trips')
   ...
   .contains('route', [params.from])
@@ -34,7 +34,7 @@ let query = supabase
 [lib/auto-match.ts:49-56](../lib/auto-match.ts)
 
 ```ts
-let query = supabase
+let query = client
   .from('trips')
   ...
   .contains('route', [origin])
@@ -92,7 +92,7 @@ an obvious home (`(flight_number, travel_date)` equality).
 - `rankTrips` unit test: searcher `{origin:CCU, destination:AMS, via:[DOH]}`
   matches a trip with `route:['DOH','AMS']` with `routeMatch = 'one-leg'`
   and non-zero score.
-- Integration test against a seeded Supabase: the full search flow returns
+- Integration test against a seeded Postgres: the full search flow returns
   the partial-leg student.
 - Auto-match test: creating the family's request on top of the student's
   existing offer surfaces the student in `findMatchingTrips()`.

@@ -27,7 +27,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 /**
  * Run `fn` inside a transaction with the request's identity bound to a
  * Postgres role + `request.jwt.claims` GUC, so every query is subject to
- * the RLS policies defined in supabase/migrations/*.sql.
+ * the RLS policies defined in db/migrations/*.sql.
  *
  *   * `clerkUserId` = a Clerk `sub` → role `authenticated`, claims set.
  *   * `clerkUserId === null` → role `anon`, claims cleared.

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // scripts/migrate.mjs
 //
-// Minimal migration runner for raw SQL migrations under supabase/migrations.
-// Replaces `supabase db push` / `db reset`.
+// Minimal migration runner for raw SQL migrations under db/migrations.
+// Applies them directly via postgres.js — no external migration CLI.
 //
 // Behavior:
 //   * Connects via DIRECT_DATABASE_URL (the superuser/owner role — needed
 //     because migrations create SECURITY DEFINER functions whose owner must
 //     own the tables they write to).
 //   * Discovers files matching ^\d{4}_.+\.sql (skips the legacy timestamped
-//     Supabase artifact `20260414201200_remote_commit.sql`).
+//     artifact `20260414201200_remote_commit.sql`).
 //   * Applies them in lexical order (0000, 0001, …, 0024).
 //   * Takes a session advisory lock so concurrent runs serialize.
 //   * Tracks applied files in `_migrations(filename, checksum, applied_at)`.
@@ -29,7 +29,7 @@ import postgres from 'postgres';
 const MIGRATIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
-  'supabase',
+  'db',
   'migrations',
 );
 // Arbitrary 64-bit constant; any other migrate.mjs run on this DB takes the

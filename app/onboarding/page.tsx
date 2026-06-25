@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { asc, desc, eq, sql } from 'drizzle-orm';
 import { requireUserId } from '@/lib/auth-guard';
-import { syncClerkUserToSupabase } from '@/lib/clerk-sync';
+import { syncClerkUser } from '@/lib/clerk-sync';
 import { withUser } from '@/lib/db';
 import { profileLanguages, profiles } from '@/lib/db/schema';
 import { OnboardingForm } from './onboarding-form';
@@ -21,7 +21,7 @@ export const metadata: Metadata = { title: 'Welcome · Saathi' };
  *
  * New flow:
  *   1. Clerk handles sign-in (any of Google / Facebook / LinkedIn / X).
- *   2. syncClerkUserToSupabase inserts a default profile row on arrival.
+ *   2. syncClerkUser inserts a default profile row on arrival.
  *   3. This page loads that row into a form for the user to finish — role,
  *      languages, WhatsApp number (plain field, no OTP), optional bio.
  *   4. Submit writes through a server action and redirects to /dashboard.
@@ -37,7 +37,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
   const userId = await requireUserId('/onboarding');
 
   // Self-heal: create/update profile row from Clerk state.
-  await syncClerkUserToSupabase(userId);
+  await syncClerkUser(userId);
 
   // Belt-and-braces: if a returning user lands here (stale env var,
   // legacy Clerk session, direct URL), check whether they've already

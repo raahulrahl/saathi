@@ -527,7 +527,7 @@ function ModeSubmit({ mode, onSelect, pending }: ModeSubmitProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Live counter — client-side Supabase count query
+// Live counter — fetches the live count from /api/public-trips/count
 // ---------------------------------------------------------------------------
 
 interface LiveCounterProps {

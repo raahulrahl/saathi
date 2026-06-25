@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
   try {
     const { offers, requests } = await withUser(null, async (tx) => {
       // route contains BOTH airports (so partial-leg helpers count too).
-      // `contains` in supabase-js maps to PG's `@>` (array contains).
+      // `@>` is PG's array-contains operator.
       const routeContains = and(
         sql`${publicTrips.route} @> ARRAY[${from}]::text[]`,
         sql`${publicTrips.route} @> ARRAY[${to}]::text[]`,

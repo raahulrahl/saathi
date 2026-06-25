@@ -46,7 +46,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const { welcome } = await searchParams;
   const showWelcomeBanner = welcome === '1';
 
-  // Single user-scoped tx for everything. The previous supabase code used
+  // Single user-scoped tx for everything. The previous data layer used
   // foreign-key embed syntax (`trip:trips!inner(...)`) — here we do explicit
   // joins and shape the rows on the JS side. Equivalent SQL, more readable.
   const data = await withUser(uid, async (tx) => {

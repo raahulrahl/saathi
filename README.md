@@ -61,7 +61,7 @@ nvm use
 corepack enable
 pnpm install
 
-# 3. Copy env and fill in at minimum: Clerk + Supabase keys
+# 3. Copy env and fill in at minimum: Clerk keys + DATABASE_URL
 cp .env.example .env.local
 
 # 4. Run
@@ -120,7 +120,7 @@ graph LR
         Cron[Vercel Cron<br/>every minute / daily]
     end
 
-    subgraph Supabase["Supabase · Postgres + RLS"]
+    subgraph Postgres["Postgres · RLS"]
         DB[(trips · matches · trip_legs<br/>pending_notifications<br/>FOR UPDATE SKIP LOCKED)]
     end
 
@@ -138,7 +138,7 @@ graph LR
     Browser --> App
     Browser --> Matches
     App -->|sign-in JWT| Clerk
-    Clerk -->|verified JWT| DB
+    Clerk -->|session identity| DB
     App -->|RLS-gated queries| DB
     App -->|enqueue pending_notifications| DB
     App -->|OTP verify| Twilio
@@ -163,9 +163,9 @@ _Tooling_: pnpm · Vitest · ESLint · Prettier · Husky · commitlint.
 | `pnpm format` / `pnpm format:check` | Prettier write / check                                      |
 | `pnpm typecheck`                    | `tsc --noEmit`                                              |
 | `pnpm test`                         | Vitest run (`pnpm test:watch` for watch mode)               |
-| `pnpm db:types`                     | Regenerate `types/db.ts` from linked Supabase project       |
-| `pnpm db:reset`                     | Reset local Supabase + re-apply migrations                  |
-| `pnpm db:push`                      | Push pending migrations to remote                           |
+| `pnpm db:migrate`                   | Apply pending SQL migrations from `db/migrations/`          |
+| `pnpm db:pull`                      | Re-introspect the live DB into `lib/db/schema.ts`           |
+| `pnpm db:smoke`                     | Run the RLS smoke test (`scripts/smoke-rls.mjs`)            |
 
 ---
 

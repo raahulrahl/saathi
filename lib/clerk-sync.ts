@@ -19,7 +19,7 @@ import { profiles } from '@/lib/db/schema';
  * doing useful work with the rows. The Clerk session still carries all
  * the OAuth info if we want to display "signed in via X" live.
  */
-export async function syncClerkUserToSupabase(userId: string): Promise<void> {
+export async function syncClerkUser(userId: string): Promise<void> {
   const user = await currentUser();
   if (!user || user.id !== userId) return;
 
@@ -45,7 +45,7 @@ export async function syncClerkUserToSupabase(userId: string): Promise<void> {
 
   // Insert the profile once; never overwrite once it exists (onboarding
   // owns user-editable fields after creation). onConflictDoNothing handles
-  // the duplicate-key on re-runs (this is the supabase `.then(ok, ignore)`
+  // the duplicate-key on re-runs (this is the `.then(ok, ignore)`
   // pattern, expressed as a SQL no-op rather than a JS error swallow).
   await withService((tx) =>
     tx

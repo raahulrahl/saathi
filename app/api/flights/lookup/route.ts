@@ -206,7 +206,7 @@ export async function POST(req: NextRequest) {
 
   // ── 1. DB cache lookup ─────────────────────────────────────────────────────
   // flight_cache has a service_role-only RLS policy (0012). Under the old
-  // supabase-authenticated client this silently returned 0 rows — the cache
+  // user-authenticated client this silently returned 0 rows — the cache
   // never actually hit. Now using withService so caching works as intended.
   const cached = await withService(async (tx) => {
     const rows = await tx

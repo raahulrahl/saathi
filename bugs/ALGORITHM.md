@@ -41,7 +41,7 @@ Match iff **any leg overlaps**, ranked by how specific the overlap is
 
 ## Schema
 
-New migration: `supabase/migrations/0014_trip_legs.sql`.
+New migration: `db/migrations/0014_trip_legs.sql`.
 
 ```sql
 create table public.trip_legs (

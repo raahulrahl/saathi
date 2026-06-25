@@ -11,8 +11,6 @@ const nextConfig = {
   outputFileTracingRoot: __dirname,
   images: {
     remotePatterns: [
-      // Supabase Storage public buckets
-      { protocol: 'https', hostname: '**.supabase.co' },
       // OAuth avatar sources — only the providers actually enabled in Clerk.
       // Google / GitHub hosts removed: those providers aren't offered for
       // sign-in, so users will never have those avatar URLs.

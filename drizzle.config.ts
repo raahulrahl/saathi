@@ -2,7 +2,7 @@ import { defineConfig } from 'drizzle-kit';
 
 /**
  * Drizzle is used as a typed CLIENT over a schema owned by raw SQL
- * (supabase/migrations/*.sql). We only ever run `drizzle-kit pull` —
+ * (db/migrations/*.sql). We only ever run `drizzle-kit pull` —
  * never `generate` or `push`. The pull regenerates lib/db/schema.ts
  * from the live DB; views and CHECK-driven enums then get hand-fixed.
  *

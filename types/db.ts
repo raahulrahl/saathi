@@ -1,11 +1,9 @@
-// Hand-authored mirror of the Supabase schema in supabase/migrations/*.
-// When a real Supabase project exists, regenerate with:
-//   pnpm dlx supabase gen types typescript --linked > types/db.ts
-// and commit the result. Until then, this file is authoritative for TypeScript.
+// Hand-authored mirror of the SQL schema in db/migrations/*. This file is
+// authoritative for the TypeScript payload types it exports; keep it in sync
+// by hand when the migrations change.
 //
-// Note: each Tables / Views entry carries a `Relationships: []` because
-// @supabase/supabase-js expects it at the type level (the generator emits it
-// automatically).
+// Note: each Tables / Views entry carries a `Relationships: []` to preserve
+// the PostgREST-style shape the original generated types used.
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -230,14 +228,8 @@ type InsertOf<T, Auto extends keyof T> = Omit<T, Auto> & Partial<Pick<T, Auto>>;
 type UpdateOf<T> = Partial<T>;
 
 // --- Database -----------------------------------------------------------------
-// `__InternalSupabase` is required by @supabase/supabase-js ≥2.100 — it pins
-// the PostgREST version used for type narrowing. The CLI includes it in
-// generated types; we include it here too.
 
 export interface Database {
-  __InternalSupabase: {
-    PostgrestVersion: '12';
-  };
   public: {
     Tables: {
       profiles: {
