@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { format, parseISO } from 'date-fns';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
@@ -65,7 +65,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
     if (!m) return { match: null };
 
     // Fetch both profiles in one IN-lookup; shape them on the JS side.
-    const profileRows = await tx
+    const contactRows = await tx
       .select({
         id: profiles.id,
         display_name: profiles.displayName,
@@ -78,26 +78,10 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
         facebook_url: profiles.facebookUrl,
       })
       .from(profiles)
-      .where(eq(profiles.id, m.poster_id))
-      .limit(1);
-    const requesterRows = await tx
-      .select({
-        id: profiles.id,
-        display_name: profiles.displayName,
-        photo_url: profiles.photoUrl,
-        whatsapp_number: profiles.whatsappNumber,
-        email: profiles.email,
-        linkedin_url: profiles.linkedinUrl,
-        twitter_url: profiles.twitterUrl,
-        instagram_url: profiles.instagramUrl,
-        facebook_url: profiles.facebookUrl,
-      })
-      .from(profiles)
-      .where(eq(profiles.id, m.requester_id))
-      .limit(1);
+      .where(inArray(profiles.id, [m.poster_id, m.requester_id]));
 
-    const poster = profileRows[0] ?? null;
-    const requester = requesterRows[0] ?? null;
+    const poster = contactRows.find((r) => r.id === m.poster_id) ?? null;
+    const requester = contactRows.find((r) => r.id === m.requester_id) ?? null;
 
     // Travellers (visible to trip owner via 0013 "owner full access" policy
     // and to match participants via 0015 "match participants read").

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { createHash, randomInt } from 'node:crypto';
+import { generateOtp, hashOtp } from '@/lib/otp';
 import { eq } from 'drizzle-orm';
 import { withService } from '@/lib/db';
 import { profiles } from '@/lib/db/schema';
@@ -25,14 +25,6 @@ import { profiles } from '@/lib/db/schema';
  *   TWILIO_AUTH_TOKEN
  *   TWILIO_SMS_FROM          — E.164 Twilio number, e.g. +15551234567
  */
-
-function generateOtp(): string {
-  return String(randomInt(1_000_000)).padStart(6, '0');
-}
-
-function hashOtp(phone: string, code: string): string {
-  return createHash('sha256').update(`${phone}:${code}`).digest('hex');
-}
 
 async function sendSmsOtp(phone: string, code: string): Promise<{ ok: boolean; detail: string }> {
   const sid = process.env.TWILIO_ACCOUNT_SID;

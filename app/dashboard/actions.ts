@@ -5,7 +5,7 @@
  * declining incoming match_requests from the "Incoming" tab.
  */
 
-import { auth } from '@clerk/nextjs/server';
+import { getUserId } from '@/lib/auth-guard';
 import { revalidatePath } from 'next/cache';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
@@ -38,7 +38,7 @@ const Input = z.object({
 export async function respondToMatchRequestAction(input: z.infer<typeof Input>) {
   const parsed = Input.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Bad input' } as const;
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) return { ok: false, error: 'Not signed in' } as const;
 
   try {

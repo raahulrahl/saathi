@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs/server';
+import { getUserId } from '@/lib/auth-guard';
 import { NextResponse } from 'next/server';
 import { syncClerkUser } from '@/lib/clerk-sync';
 
@@ -14,7 +14,7 @@ import { syncClerkUser } from '@/lib/clerk-sync';
  * key misconfigured, which blocks the webhook path too — worth fixing).
  */
 export async function POST() {
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) {
     return NextResponse.json({ ok: false, error: 'Not signed in' }, { status: 401 });
   }

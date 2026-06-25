@@ -1,6 +1,6 @@
 'use server';
 
-import { auth } from '@clerk/nextjs/server';
+import { getUserId } from '@/lib/auth-guard';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { eq } from 'drizzle-orm';
@@ -83,7 +83,7 @@ export type OnboardingInput = z.infer<typeof OnboardingSchema>;
 export async function saveOnboardingProfile(
   input: OnboardingInput,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) return { ok: false, error: 'Not signed in.' };
 
   const parsed = OnboardingSchema.safeParse(input);

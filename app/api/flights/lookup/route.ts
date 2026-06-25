@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { getUserId } from '@/lib/auth-guard';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { withService } from '@/lib/db';
@@ -157,7 +157,7 @@ function approximateTimes(
 export async function POST(req: NextRequest) {
   // ── Auth. Only the post wizard hits this, and posting requires
   // sign-in — so blocking anon doesn't break any user-facing flow.
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) {
     return NextResponse.json(
       { success: false, error: 'Please sign in.', fallbackToManual: true },

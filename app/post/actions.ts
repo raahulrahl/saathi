@@ -17,7 +17,7 @@
  * (bug M08).
  */
 
-import { auth } from '@clerk/nextjs/server';
+import { getUserId } from '@/lib/auth-guard';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { after } from 'next/server';
@@ -114,7 +114,7 @@ export async function createTripAction(input: TripInput) {
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid trip.' } as const;
   }
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) {
     return { ok: false, error: 'Please sign in.' } as const;
   }

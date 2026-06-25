@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs/server';
+import { getUserId } from '@/lib/auth-guard';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -81,7 +81,7 @@ export async function generateMetadata({ params }: TripPageProps): Promise<Metad
 export default async function TripPage({ params, searchParams }: TripPageProps) {
   const { id } = await params;
   const { new: isNewTrip } = await searchParams;
-  const { userId } = await auth();
+  const userId = await getUserId();
 
   // Public read via public_trips (anon-readable). Then poster profile +
   // review stats. RLS lets a match-participant see the underlying trip

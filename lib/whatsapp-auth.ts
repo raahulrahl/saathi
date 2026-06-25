@@ -1,6 +1,7 @@
 import 'server-only';
 
-import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
+import { generateOtp, hashOtp } from '@/lib/otp';
 import { eq } from 'drizzle-orm';
 import { withService } from '@/lib/db';
 import { profiles } from '@/lib/db/schema';
@@ -43,19 +44,8 @@ import { profiles } from '@/lib/db/schema';
  */
 
 // -----------------------------------------------------------------------------
-// Internal helpers: OTP gen, hash, constant-time compare
+// Internal helper: constant-time compare
 // -----------------------------------------------------------------------------
-
-/** Cryptographically random 6-digit code, zero-padded. */
-function generateOtp(): string {
-  return String(randomInt(1_000_000)).padStart(6, '0');
-}
-
-/** SHA-256(phone + ':' + code). Phone acts as salt so identical codes
- *  across users don't produce identical hashes. */
-function hashOtp(phone: string, code: string): string {
-  return createHash('sha256').update(`${phone}:${code}`).digest('hex');
-}
 
 /** Constant-time compare to prevent response-timing bruteforce. */
 function constantTimeEquals(a: string, b: string): boolean {

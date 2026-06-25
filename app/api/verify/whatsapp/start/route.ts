@@ -20,7 +20,7 @@
  *   502 { ok: false, error: string} — Twilio refused the send (rare: bad cred, number blocked)
  */
 
-import { auth } from '@clerk/nextjs/server';
+import { getUserId } from '@/lib/auth-guard';
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { isPlausibleE164 } from '@/lib/verify';
@@ -29,7 +29,7 @@ import { startWhatsAppVerification } from '@/lib/whatsapp-auth';
 const Body = z.object({ phone: z.string().trim() });
 
 export async function POST(request: NextRequest) {
-  const { userId } = await auth();
+  const userId = await getUserId();
   if (!userId) {
     return NextResponse.json({ ok: false, error: 'Not signed in' }, { status: 401 });
   }
