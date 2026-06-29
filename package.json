@@ -46,7 +46,7 @@
     "drizzle-orm": "^0.45.2",
     "flags": "^4.0.6",
     "libphonenumber-js": "^1.12.41",
-    "lucide-react": "^0.468.0",
+    "lucide-react": "^1.22.0",
     "next": "15.5.15",
     "postgres": "^3.4.9",
     "react": "19.2.5",
